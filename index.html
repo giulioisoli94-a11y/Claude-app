@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Swing Pattern Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..900&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="9" width="4" height="10" rx="1" fill="var(--down)"/><line x1="5" y1="5" x2="5" y2="22" stroke="var(--down)" stroke-width="1.5"/><rect x="11" y="6" width="4" height="9" rx="1" fill="var(--up)"/><line x1="13" y1="3" x2="13" y2="18" stroke="var(--up)" stroke-width="1.5"/><rect x="19" y="3" width="4" height="8" rx="1" fill="var(--up)"/><line x1="21" y1="1" x2="21" y2="14" stroke="var(--up)" stroke-width="1.5"/><path d="M2 21 L24 9" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="3 2"/></svg>
+      <h1>Swing Pattern Lab</h1>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#analyze" data-view="analyze">Analyze</a>
+      <a href="#learn" data-view="learn">Learn</a>
+      <a href="#trainer" data-view="trainer">Trainer</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="note">Educational tool. Not financial advice.</div>
+  </div>
+</header>
+
+<main>
+  <!-- ANALYZE -->
+  <section class="view" id="view-analyze">
+    <div class="toolbar">
+      <select class="select" id="src" aria-label="Market data"></select>
+      <button class="btn" id="randomBtn" type="button">New random market</button>
+      <label class="btn file-btn">Load CSV…<input type="file" id="csv" accept=".csv,.txt,text/csv"></label>
+      <label class="toggle"><input type="checkbox" id="weekly"> Weekly bars</label>
+      <span class="err" id="csvErr" hidden></span>
+    </div>
+
+    <div class="analyze-grid">
+      <div class="card chart-card">
+        <div class="chart-head">
+          <h2 id="tkr">–</h2>
+          <span class="px num" id="px">–</span>
+          <span class="chg num" id="chg"></span>
+          <span class="tag" id="srcTag">Sample</span>
+          <span class="muted" id="asof"></span>
+        </div>
+        <div class="chart-wrap"><canvas id="chart" aria-label="Price chart with detected patterns"></canvas></div>
+        <div class="chart-foot">
+          <div class="chips" id="layers"></div>
+          <div class="zoom">
+            <button class="btn ghost" type="button" id="zOut" aria-label="Zoom out">−</button>
+            <button class="btn ghost" type="button" id="zIn" aria-label="Zoom in">+</button>
+            <button class="btn ghost" type="button" id="zReset">Reset</button>
+          </div>
+        </div>
+        <div class="read" id="read"></div>
+      </div>
+
+      <aside class="side">
+        <div class="card">
+          <div class="panel-h">
+            <h3>Detected setups</h3>
+            <div class="chips" id="sigFilter">
+              <button class="chip" type="button" data-f="all" aria-pressed="true">All</button>
+              <button class="chip" type="button" data-f="bull" aria-pressed="false">Bullish</button>
+              <button class="chip" type="button" data-f="bear" aria-pressed="false">Bearish</button>
+            </div>
+          </div>
+          <ul class="sig-list" id="sigs" role="listbox" aria-label="Detected setups"></ul>
+        </div>
+        <div class="card" id="detail"></div>
+      </aside>
+    </div>
+
+    <div class="card how">
+      <h3>Use it on your own stocks</h3>
+      <ol>
+        <li>Download daily prices as CSV: on Yahoo Finance open a ticker → <b>Historical Data</b> → Download, or use stooq.com, or export from your broker. You need Date, Open, High, Low, Close and ideally Volume columns.</li>
+        <li>Use at least 1 year of daily data so the 200-day average and older support levels exist.</li>
+        <li>Click <b>Load CSV…</b>. Everything runs in your browser; the file is not uploaded anywhere.</li>
+        <li>Click a setup on the right to draw it, see a trade plan and check it against the confirmation list. Click a triangle marker on the chart to open that candle pattern.</li>
+      </ol>
+      <p class="disclaimer">Patterns describe tendencies, not certainties. The scanner follows textbook rules measured in ATR (average true range); it will miss some patterns and see some that a human would reject. Use it to train your eye and to structure a plan, then make your own decision.</p>
+    </div>
+  </section>
+
+  <!-- LEARN -->
+  <section class="view" id="view-learn" hidden>
+    <select class="select lib-select" id="libSelect" aria-label="Choose a topic"></select>
+    <div class="learn-grid">
+      <nav class="card lib-nav" id="libNav" aria-label="Library">
+        <input type="search" id="libSearch" placeholder="Search patterns" aria-label="Search patterns">
+        <div id="libList"></div>
+      </nav>
+      <article class="card article" id="article"></article>
+    </div>
+  </section>
+
+  <!-- TRAINER -->
+  <section class="view" id="view-trainer" hidden>
+    <div class="trainer card">
+      <div class="tr-head">
+        <div>
+          <div class="eyebrow">Pattern trainer</div>
+          <h2 id="trQ">Which pattern is this?</h2>
+        </div>
+        <div class="scorebox">
+          <div>Score <b id="trScore">0/0</b></div>
+          <div>Streak <b id="trStreak">0</b></div>
+          <div>Best <b id="trBest">0</b></div>
+        </div>
+      </div>
+      <div class="tr-chart"><canvas id="trChart" aria-label="Quiz chart"></canvas></div>
+      <div class="tr-body">
+        <div class="toolbar">
+          <label class="toggle"><input type="checkbox" id="trPredict"> Hard mode: hide the breakout and predict the direction too</label>
+        </div>
+        <div class="opts" id="trOpts"></div>
+        <div class="feedback" id="trFb" hidden></div>
+        <div><button class="btn primary" type="button" id="trNext">Next chart</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="js/indicators.js"></script>
+<script src="js/data.js"></script>
+<script src="js/patterns.js"></script>
+<script src="js/learn.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
