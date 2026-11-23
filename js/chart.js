@@ -145,10 +145,12 @@
       if (o.axes) {
         ctx.textAlign = 'center'; ctx.fillStyle = C.text;
         const every = Math.max(1, Math.round(80 / bw));
+        const d0 = Date.parse(bars[i0].t), d1 = Date.parse(bars[Math.min(i1, i0 + every)].t);
+        const spanDays = isFinite(d0) && isFinite(d1) ? (d1 - d0) / 864e5 : 0;
         for (let i = Math.ceil(i0 / every) * every; i <= i1; i += every) {
           const x = X(i);
           ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, top); ctx.lineTo(Math.round(x) + 0.5, H - bottomH); ctx.stroke();
-          ctx.fillText(shortDate(bars[i].t), x, H - bottomH / 2);
+          ctx.fillText(shortDate(bars[i].t, spanDays), x, H - bottomH / 2);
         }
       }
 
@@ -330,7 +332,8 @@
     if (!text) return;
     ctx.font = '600 11px ' + (css(ctx.canvas, '--font-ui') || 'sans-serif');
     const w = ctx.measureText(text).width + 8;
-    const yy = below ? y + 12 : y - 12;
+    const H = ctx.canvas.height / (window.devicePixelRatio || 1);
+    const yy = Math.max(30, Math.min(H - 30, below ? y + 12 : y - 12));
     ctx.fillStyle = C.panel; ctx.globalAlpha = 0.88; ctx.fillRect(x - w / 2, yy - 8, w, 16); ctx.globalAlpha = 1;
     ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(x - w / 2 + 0.5, yy - 7.5, w - 1, 15);
     ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, yy + 0.5);
@@ -367,6 +370,15 @@
         if (s.label && strong) label(ctx, s.label, X((s.from + s.to) / 2), Y(s.hi), col, C, false);
       } else if (s.t === 'dots') {
         for (const p of s.pts) { ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), 3.2, 0, 7); ctx.fill(); }
+      } else if (s.t === 'vline') {
+        ctx.save(); ctx.setLineDash([2, 3]); ctx.globalAlpha = 0.7; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(X(s.i), 0); ctx.lineTo(X(s.i), ctx.canvas.height); ctx.stroke(); ctx.restore();
+        if (s.label) label(ctx, s.label, X(s.i), 30, col, C, false);
+      } else if (s.t === 'outcome') {
+        // trade result badge at exit
+        const y = Y(s.p);
+        ctx.beginPath(); ctx.arc(X(s.i), y, 6, 0, 7); ctx.fill();
+        if (s.label) label(ctx, s.label, X(s.i), y, col, C, s.below);
       } else if (s.t === 'marker') {
         const y = s.dir > 0 ? Y(s.p) - 10 : Y(s.p) + 10;
         tri(ctx, X(s.i), y, 5, s.dir > 0 ? -1 : 1);
@@ -385,10 +397,12 @@
     return root.SPP ? root.SPP.fmt(x) : x.toFixed(2);
   }
   function fmtV(v) { return v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : String(v); }
-  function shortDate(t) {
+  function shortDate(t, spanDays) {
     const d = new Date(t);
     if (!isFinite(d)) return String(t).slice(0, 10);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    if (spanDays > 300) return String(d.getUTCFullYear());
+    if (spanDays > 45) return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit', timeZone: 'UTC' });
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
   root.ChartView = ChartView;

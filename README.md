@@ -28,6 +28,10 @@ Each setup comes with:
 
 **Trainer**: randomized pattern charts to identify. Hard mode hides the breakout so you also have to predict the direction.
 
+**Track record**: how well the scanner recognizes patterns, and how every setup actually performed in a walk-forward backtest on ~190 real S&P 500 price histories (daily, weekly, monthly), compared with random entries. See [BACKTEST.md](BACKTEST.md).
+
+**Timeframes**: Daily, Weekly and Monthly. **Backtest this chart** replays the scanner bar by bar over any loaded stock.
+
 ## How detection works
 
 Everything is measured in ATR (14-day average true range), so the same rules work for any price or volatility. `js/patterns.js` is commented rule by rule.
@@ -40,10 +44,13 @@ css/app.css         styles (light + dark)
 js/indicators.js    SMA, EMA, RSI, ATR
 js/data.js          CSV parser, weekly resampling, synthetic markets, pattern templates
 js/patterns.js      detection engine → signals with plan + checklist
+js/backtest.js      walk-forward backtest core (app + offline study)
+js/trackrecord.js   generated backtest results shown in the app
 js/chart.js         canvas candlestick chart (zoom, pan, overlays)
 js/learn.js         lesson content
 js/app.js           UI
 test/run.js         engine smoke test: node test/run.js
+backtest/           data fetch, recognition test, walk-forward study, visual audit (see BACKTEST.md)
 ```
 
 ## Disclaimer

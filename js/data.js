@@ -70,15 +70,15 @@
      lead: the trend that normally precedes the pattern. breakAt: index of the waypoint
      where the breakout leg starts (the trainer can hide everything from there on). */
   D.templates = {
-    double_top:        { lead: 'up',   breakAt: 5, wps: [[0, 90], [10, 100], [9, 91], [9, 99.6], [8, 90.5], [4, 85, 1.7], [6, 83]] },
-    double_bottom:     { lead: 'down', breakAt: 5, wps: [[0, 110], [10, 100], [9, 109], [9, 100.4], [8, 109.5], [4, 115, 1.8], [6, 117]] },
+    double_top:        { lead: 'up',   breakAt: 5, wps: [[0, 90], [10, 100], [9, 91], [9, 99.6], [8, 92], [4, 85, 1.7], [6, 83]] },
+    double_bottom:     { lead: 'down', breakAt: 5, wps: [[0, 110], [10, 100], [9, 109], [9, 100.4], [8, 108], [4, 115, 1.8], [6, 117]] },
     head_shoulders:    { lead: 'up',   breakAt: 6, wps: [[0, 88], [8, 100], [7, 93], [9, 108], [9, 93.5], [7, 100.5], [7, 93, 1.2], [4, 87, 1.8], [5, 85]] },
     inv_head_shoulders:{ lead: 'down', breakAt: 6, wps: [[0, 112], [8, 100], [7, 107], [9, 92], [9, 106.5], [7, 99.5], [7, 107, 1.2], [4, 113, 1.8], [5, 115]] },
-    asc_triangle:      { lead: 'up',   breakAt: 8, wps: [[0, 85], [8, 100], [7, 92], [6, 100], [5, 95], [5, 100, 0.8], [4, 97, 0.7], [3, 100.2, 0.7], [3, 106, 2.2], [5, 108]] },
-    desc_triangle:     { lead: 'down', breakAt: 8, wps: [[0, 115], [8, 100], [7, 108], [6, 100], [5, 105], [5, 100, 0.8], [4, 103, 0.7], [3, 99.8, 0.7], [3, 94, 2.2], [5, 92]] },
-    sym_triangle:      { lead: 'up',   breakAt: 8, wps: [[0, 88], [8, 110], [7, 95], [6, 107], [5, 98], [5, 104.5, 0.8], [4, 100, 0.7], [3, 103, 0.7], [3, 108, 2.0], [5, 111]] },
-    rising_wedge:      { lead: 'up',   breakAt: 8, wps: [[0, 90], [8, 100], [6, 95.5], [7, 104], [5, 100.5], [6, 106.5, 0.8], [4, 104.2, 0.7], [4, 107.5, 0.7], [4, 101.5, 1.8], [5, 98]] },
-    falling_wedge:     { lead: 'down', breakAt: 8, wps: [[0, 110], [8, 100], [6, 104.5], [7, 96], [5, 99.5], [6, 93.5, 0.8], [4, 95.8, 0.7], [4, 92.5, 0.7], [4, 98.5, 1.8], [5, 102]] },
+    asc_triangle:      { lead: 'up',   breakAt: 8, wps: [[0, 85], [8, 100], [7, 90], [6, 100], [6, 93.5], [6, 100, 0.8], [5, 96.5, 0.7], [4, 100.2, 0.7], [3, 106, 2.2], [5, 108]] },
+    desc_triangle:     { lead: 'down', breakAt: 8, wps: [[0, 115], [8, 100], [7, 110], [6, 100], [6, 106.5], [6, 100, 0.8], [5, 103.5, 0.7], [4, 99.8, 0.7], [3, 94, 2.2], [5, 92]] },
+    sym_triangle:      { lead: 'up',   breakAt: 8, wps: [[0, 88], [8, 110], [7, 92], [6, 107], [6, 95], [6, 104.5, 0.8], [5, 97.5, 0.7], [4, 102.5, 0.7], [3, 108, 2.0], [5, 111]] },
+    rising_wedge:      { lead: 'up',   breakAt: 8, wps: [[0, 90], [8, 100], [6, 94], [7, 104.5], [5, 100], [6, 108, 0.8], [4, 104.5, 0.7], [4, 110.5, 0.7], [4, 102, 1.8], [5, 98]] },
+    falling_wedge:     { lead: 'down', breakAt: 8, wps: [[0, 110], [8, 100], [6, 106], [7, 95.5], [5, 100], [6, 92, 0.8], [4, 95.5, 0.7], [4, 89.5, 0.7], [4, 98, 1.8], [5, 102]] },
     bull_flag:         { lead: 'up',   breakAt: 6, wps: [[0, 85], [8, 100, 1.8], [3, 97, 0.6], [3, 98.5, 0.6], [3, 95.8, 0.6], [3, 97.2, 0.6], [3, 101.5, 2.0], [6, 106]] },
     bear_flag:         { lead: 'down', breakAt: 6, wps: [[0, 115], [8, 100, 1.8], [3, 103, 0.6], [3, 101.5, 0.6], [3, 104.2, 0.6], [3, 102.8, 0.6], [3, 98.5, 2.0], [6, 94]] },
   };
@@ -239,6 +239,22 @@
       } else {
         cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l); cur.c = b.c; cur.v += b.v;
       }
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+
+  /* Daily → monthly bars (calendar month). */
+  D.toMonthly = function (bars) {
+    const out = [];
+    let cur = null, key = null;
+    for (const b of bars) {
+      const k = String(b.t).slice(0, 7);
+      if (k !== key) {
+        if (cur) out.push(cur);
+        cur = { t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v };
+        key = k;
+      } else { cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l); cur.c = b.c; cur.v += b.v; }
     }
     if (cur) out.push(cur);
     return out;

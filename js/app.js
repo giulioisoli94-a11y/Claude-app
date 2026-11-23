@@ -1,6 +1,7 @@
 /* UI wiring: data source → analysis → chart, setup list, detail, library, trainer. */
 (function () {
-  const D = window.SPD, P = window.SPP, LIB = window.SPL;
+  const D = window.SPD, P = window.SPP, LIB = window.SPL, B = window.SPB, T = window.SPT;
+  const TFW = { D: 'Daily', W: 'Weekly', M: 'Monthly' };
   const $ = s => document.querySelector(s);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const fmt = P.fmt;
@@ -13,7 +14,7 @@
   const title = key => (LIB.entries[key] ? LIB.entries[key].title : key);
 
   /* ================= ANALYZE ================= */
-  const state = { bars: [], daily: [], an: null, sel: null, filter: 'all', srcKind: 'sample', name: '', ticker: '', randSeed: 7 };
+  const state = { bars: [], daily: [], an: null, sel: null, filter: 'all', srcKind: 'sample', name: '', ticker: '', randSeed: 7, tf: 'D', bt: null };
   const chart = new ChartView($('#chart'), { initialBars: 150 });
 
   const src = $('#src');
@@ -30,8 +31,13 @@
     run();
   }
   function run() {
-    state.bars = $('#weekly').checked ? D.toWeekly(state.daily) : state.daily;
-    if (state.bars.length < 30) { $('#csvErr').hidden = false; $('#csvErr').textContent = 'Not enough weekly bars; switch back to daily.'; return; }
+    state.bars = state.tf === 'W' ? D.toWeekly(state.daily) : state.tf === 'M' ? D.toMonthly(state.daily) : state.daily;
+    if (state.bars.length < 30) {
+      $('#csvErr').hidden = false;
+      $('#csvErr').textContent = 'Only ' + state.bars.length + ' ' + TFW[state.tf].toLowerCase() + ' bars. Load a longer history (about 3+ years for weekly, 5+ for monthly) or switch back to Daily.';
+      state.tf = 'D'; paintTf(); state.bars = state.daily;
+    }
+    state.bt = null; if (typeof applyLayers === 'function') applyLayers(); chart.setOverlays([]); $('#btBtn').disabled = false; $('#btBtn').textContent = 'Backtest this chart';
     state.an = P.analyze(state.bars);
     state.sel = null;
     chart.setData(state.bars, state.an);
@@ -48,7 +54,11 @@
     else if (v === 'random') loadRandom();
   });
   $('#randomBtn').addEventListener('click', () => { state.randSeed = Math.floor(Math.random() * 1e6); src.value = 'random'; loadRandom(); });
-  $('#weekly').addEventListener('change', run);
+  function paintTf() { document.querySelectorAll('#tfSeg button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.tf === state.tf))); }
+  $('#tfSeg').addEventListener('click', e => {
+    const b = e.target.closest('button[data-tf]'); if (!b || b.dataset.tf === state.tf) return;
+    state.tf = b.dataset.tf; paintTf(); $('#csvErr').hidden = true; run();
+  });
   $('#csv').addEventListener('change', e => {
     const f = e.target.files[0];
     if (!f) return;
@@ -75,7 +85,7 @@
     $('#px').textContent = fmt(m.price);
     const c = $('#chg'); c.textContent = (m.change >= 0 ? '+' : '') + m.change.toFixed(2) + '%'; c.className = 'chg num ' + (m.change >= 0 ? 'up' : 'down');
     $('#srcTag').textContent = state.srcKind === 'csv' ? 'Your data' : 'Synthetic sample';
-    $('#asof').textContent = (($('#weekly').checked) ? 'Weekly · ' : 'Daily · ') + state.bars.length + ' bars · last ' + m.date;
+    $('#asof').textContent = TFW[state.tf] + ' · ' + state.bars.length + ' bars · last ' + m.date;
   }
 
   function renderRead() {
@@ -166,9 +176,10 @@
         </div>
         <div class="sizer-out" id="sizeOut"></div>
       </div>` : ''}
+      ${evidenceHTML(s)}
       ${s.checklist && s.checklist.length ? `<div class="sec">
-        <div class="row" style="justify-content:space-between"><div class="eyebrow">Confirmation checklist</div><span class="num muted">${s.score}/100</span></div>
-        <ul class="checks">${s.checklist.map(c => `<li>${icon(c.ok)}<div><b>${esc(c.label)}</b><span>${esc(c.why)}</span></div></li>`).join('')}</ul>
+        <div class="row" style="justify-content:space-between"><div class="eyebrow">Confirmation checklist</div><span class="num muted" title="A teaching aid: in the backtest the overall score did not separate winners from losers. Volume was the item that mattered.">${s.score}/100</span></div>
+        <ul class="checks">${s.checklist.map(c => `<li>${icon(c.ok)}<div><b>${esc(c.label)}${c.k === 'vol' ? ' <span class="vd good" title="In the backtest, strong-volume breaks did better than weak-volume breaks in most comparisons">Backed by the backtest</span>' : ''}</b><span>${esc(c.why)}</span></div></li>`).join('')}</ul>
       </div>` : ''}
       ${e.title ? `<div class="lesson">
         <h4>Quick lesson</h4>
@@ -194,6 +205,53 @@
     const ol = $('#openLib'); if (ol) ol.addEventListener('click', () => { openLesson(s.key); location.hash = 'learn'; });
   }
 
+  /* What the backtest says about this kind of setup on this timeframe. */
+  function evidenceHTML(s) {
+    const st = T && T.byKey[s.key] && T.byKey[s.key][state.tf];
+    if (!st || !st.n) return '';
+    const v = B.verdict(st);
+    const per = T.byKeySet[s.key] && T.byKeySet[s.key][state.tf];
+    const held = per && per.a.n >= 30 && per.b.n >= 30 ? (per.a.edge > 0 && per.b.edge > 0 ? 'Positive in both test periods.' : per.a.edge <= 0 && per.b.edge <= 0 ? 'Negative in both test periods.' : 'Mixed between the two test periods.') : '';
+    let volLine = '';
+    const vk = s.kind === 'chart' || s.kind === 'breakout' ? s.kind : null;
+    const vc = s.checklist && s.checklist.find(c => c.k === 'vol');
+    if (vk && vc && T.volume[vk] && T.volume[vk][state.tf]) {
+      const vv = T.volume[vk][state.tf];
+      const what = vk === 'chart' ? 'pattern' : 'level';
+      if (vc.ok === false && vv.weak.all.n) volLine = `<div class="warnline">Weak volume on this break. ${TFW[state.tf]} ${what} breaks on weak volume: ${sgn(vv.weak.all.edge)}R vs random, against ${sgn(vv.strong.all.edge)}R when volume was strong.</div>`;
+      else if (vc.ok === true && vv.strong.all.n) volLine = `<div class="okline">Volume confirmed. ${TFW[state.tf]} ${what} breaks with strong volume: ${sgn(vv.strong.all.edge)}R vs random, against ${sgn(vv.weak.all.edge)}R on weak volume.</div>`;
+    }
+    return `<div class="sec"><div class="row" style="justify-content:space-between"><div class="eyebrow">Track record · ${TFW[state.tf]} · ${fmtN(st.n)} past trades</div><span class="vd ${v.k}">${v.label}</span></div>
+      <div class="evidence">
+        <div class="ev-grid">
+          <div>Win rate<b>${(st.win * 100).toFixed(0)}%</b></div>
+          <div>Avg result<b>${sgn(st.avgR)}R</b></div>
+          <div>Random entry<b>${sgn(st.ctrlAvgR)}R</b></div>
+          <div>Edge<b>${sgn(st.edge)}R</b></div>
+        </div>
+        ${edgeBar(st)}
+        <div class="muted" style="font-size:12px">Real S&amp;P 500 stocks, 2000–12 and 2016–20, scanned bar by bar with no look-ahead. "Random entry" uses the same direction and stop/target distances on random days. ${held}</div>
+        ${volLine}
+      </div></div>`;
+  }
+  const sgn = x => (x == null ? '–' : (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(2));
+  const fmtN = x => x.toLocaleString('en-US');
+  function edgeBar(st) {
+    // a single horizontal scale: random-entry ring, signal dot with 95% interval
+    const vals = [st.avgR - st.ci, st.avgR + st.ci, st.ctrlAvgR, 0];
+    const lo = Math.min(-0.5, ...vals), hi = Math.max(0.5, ...vals);
+    const W = 300, X = x => 8 + (x - lo) / (hi - lo) * (W - 16);
+    const v = B.verdict(st);
+    const col = v.k === 'good' ? 'var(--good)' : v.k === 'bad' ? 'var(--bad)' : 'var(--fg)';
+    return `<svg viewBox="0 0 ${W} 34" width="100%" height="34" role="img" aria-label="Average ${sgn(st.avgR)}R versus random ${sgn(st.ctrlAvgR)}R">
+      <line x1="${X(0)}" x2="${X(0)}" y1="4" y2="26" stroke="var(--fg-muted)" stroke-width="1"/>
+      <text x="${X(0)}" y="33" text-anchor="middle" font-size="9" fill="var(--fg-muted)">0R</text>
+      <line x1="${X(st.avgR - st.ci)}" x2="${X(st.avgR + st.ci)}" y1="15" y2="15" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="${X(st.ctrlAvgR)}" cy="15" r="5" fill="var(--surface)" stroke="var(--ctrl)" stroke-width="2"/>
+      <circle cx="${X(st.avgR)}" cy="15" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+    </svg>`;
+  }
+
   function showCandleLesson(cd) {
     const e = LIB.entries[cd.key];
     state.sel = null; chart.setSelected(null);
@@ -201,6 +259,60 @@
       <h3>${esc(e.title)}</h3><p>${esc(e.short)}</p><p class="muted">This one is older than the recent window, so it has no live trade plan. ${esc(e.why)}</p>
       <div><button class="link" type="button" id="openLib">Open the full lesson</button></div></div>`;
     $('#openLib').addEventListener('click', () => { openLesson(cd.key); location.hash = 'learn'; });
+  }
+
+  /* ---------- Backtest this chart ---------- */
+  $('#btBtn').addEventListener('click', () => {
+    if (state.bt && state.bt.running) return;
+    const bars = state.bars, tf = state.tf, cfg = B.TF[tf];
+    if (bars.length < cfg.warm + 20) { $('#detail').innerHTML = `<div class="bt-panel"><b>Not enough history.</b><p class="muted" style="margin:0">A ${TFW[tf].toLowerCase()} backtest needs more than ${cfg.warm + 20} bars; this chart has ${bars.length}.</p></div>`; return; }
+    const bt = state.bt = { running: true, st: { seed: 99 }, filter: null };
+    select(null);
+    const btn = $('#btBtn'); btn.disabled = true;
+    $('#detail').innerHTML = `<div class="bt-panel"><div class="eyebrow">Backtesting ${esc(state.ticker)} · ${TFW[tf]}</div><p style="margin:0">Replaying the scanner bar by bar. Each bar only sees the past.</p><div class="progress"><i id="btProg"></i></div></div>`;
+    let t = cfg.warm;
+    const step = () => {
+      if (state.bt !== bt) return;
+      const to = Math.min(bars.length - 1, t + 40);
+      B.walk(bars, tf, bt.st, t, to);
+      t = to;
+      const pr = $('#btProg'); if (pr) pr.style.width = ((t - cfg.warm) / (bars.length - 1 - cfg.warm) * 100).toFixed(0) + '%';
+      if (t < bars.length - 1) setTimeout(step, 0);
+      else { bt.running = false; btn.disabled = false; btn.textContent = 'Backtest again'; renderBt(); }
+    };
+    setTimeout(step, 30);
+  });
+
+  function renderBt() {
+    const bt = state.bt; if (!bt) return;
+    const ev = bt.st.events.filter(e => e.traded);
+    const all = B.stats(ev);
+    const groups = {};
+    for (const e of ev) (groups[e.key] = groups[e.key] || []).push(e);
+    const rows = Object.entries(groups).map(([k, L]) => [k, B.stats(L)]).sort((a, b) => b[1].n - a[1].n);
+    const v = B.verdict(all);
+    $('#detail').innerHTML = `<div class="bt-panel">
+      <div class="row" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div class="eyebrow">Backtest · ${esc(state.ticker)} · ${TFW[state.tf]}</div><span class="vd ${v.k}">${v.label}</span></div>
+      <div class="ev-grid">
+        <div>Trades<b>${all.n || 0}</b></div><div>Win rate<b>${all.n ? (all.win * 100).toFixed(0) + '%' : '–'}</b></div>
+        <div>Avg result<b>${sgn(all.avgR)}R</b></div><div>Random entry<b>${sgn(all.ctrlAvgR)}R</b></div>
+      </div>
+      ${all.n ? edgeBar(all) : ''}
+      <p class="muted" style="margin:0;font-size:12.5px">Markers on the chart: one triangle per past trade, pointing in the trade's direction, green if it made money and red if it lost (candle markers are hidden meanwhile). Click a row to show only that setup. A single stock gives small samples: read the Track record tab for results across 187 stocks.</p>
+      <div class="tbl-wrap"><table class="data"><thead><tr><th>Setup</th><th>Trades</th><th>Win</th><th>Avg R</th><th>Edge</th></tr></thead><tbody>
+      ${rows.map(([k, st]) => `<tr data-k="${k}" style="cursor:pointer${bt.filter === k ? ';background:var(--accent-soft)' : ''}"><td>${esc(title(k))}</td><td>${st.n}</td><td>${(st.win * 100).toFixed(0)}%</td><td>${sgn(st.avgR)}</td><td>${sgn(st.edge)}</td></tr>`).join('') || '<tr><td colspan="5">No trades triggered.</td></tr>'}
+      </tbody></table></div>
+      <div><button class="link" type="button" id="btClose">Back to the current setups</button></div>
+    </div>`;
+    $('#detail').querySelectorAll('tr[data-k]').forEach(tr => tr.addEventListener('click', () => { bt.filter = bt.filter === tr.dataset.k ? null : tr.dataset.k; renderBt(); }));
+    $('#btClose').addEventListener('click', () => { state.bt = null; applyLayers(); chart.setOverlays([]); renderDetail(); });
+    const C = chart.colors();
+    chart.o.candleMarks = false; // result markers replace candle markers while shown
+    const shown = ev.filter(e => !bt.filter || e.key === bt.filter);
+    chart.setOverlays([
+      { list: shown.filter(e => e.r > 0).map(e => ({ t: 'marker', i: e.t, p: e.dir > 0 ? state.bars[e.t].l : state.bars[e.t].h, dir: -e.dir, label: '' })), col: C.up, strong: false },
+      { list: shown.filter(e => e.r <= 0).map(e => ({ t: 'marker', i: e.t, p: e.dir > 0 ? state.bars[e.t].l : state.bars[e.t].h, dir: -e.dir, label: '' })), col: C.down, strong: false },
+    ]);
   }
 
   // layer toggles
@@ -298,6 +410,7 @@
         <section><h4>How a swing trader plays it</h4>${ul(e.trade)}</section>
         <section><h4>Mistakes to avoid</h4>${ul(e.mistakes)}</section>
       </div>
+      ${lessonEvidence(key)}
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
         ${D.templates[key] ? `<button class="btn" type="button" id="practice">Practice spotting it</button>` : ''}
         <button class="btn ghost" type="button" id="findIt">Find it in the sample markets</button>
@@ -318,13 +431,27 @@
     renderLibNav();
   }
 
+  function lessonEvidence(key) {
+    const bk = T && T.byKey[key];
+    if (!bk) return '';
+    const acc = T.accuracy && T.accuracy.res[key];
+    const rows = ['D', 'W', 'M'].filter(tf => bk[tf] && bk[tf].n).map(tf => {
+      const st = bk[tf], v = B.verdict(st);
+      return `<tr><td>${TFW[tf]}</td><td>${fmtN(st.n)}</td><td>${(st.win * 100).toFixed(0)}%</td><td>${(st.tgt * 100).toFixed(0)}%</td><td>${sgn(st.avgR)}</td><td>${sgn(st.ctrlAvgR)}</td><td><span class="vd ${v.k}">${v.label}</span></td></tr>`;
+    }).join('');
+    return `<section class="sec"><h4 class="eyebrow" style="margin:0">What our backtest found</h4>
+      <div class="tbl-wrap"><table class="data"><thead><tr><th>Timeframe</th><th>Trades</th><th>Win</th><th>Hit target</th><th>Avg R</th><th>Random</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${acc ? `<p class="muted" style="margin:0;font-size:12.5px">Recognition test: the scanner named a known ${esc(LIB.entries[key].title.toLowerCase())} correctly ${(acc.low.recall * 100).toFixed(0)}% of the time on clean charts and ${(acc.high.recall * 100).toFixed(0)}% on noisy ones.</p>` : ''}
+      <p class="muted" style="margin:0;font-size:12.5px">R = result in units of the planned risk (−1R = stopped out). Details in the <a href="#track" class="link">Track record</a> tab.</p></section>`;
+  }
+
   function findInSamples(key) {
     for (const s of D.samples) {
       const an = P.analyze(D.sampleBars(s));
       const hit = an.signals.find(x => x.key === key);
       if (hit) {
         location.hash = 'analyze';
-        $('#weekly').checked = false; src.value = 's:' + s.id; loadSample(s.id);
+        state.tf = 'D'; paintTf(); src.value = 's:' + s.id; loadSample(s.id);
         const again = state.an.signals.find(x => x.key === key);
         if (again) select(again);
         return;
@@ -411,19 +538,151 @@
   $('#trNext').addEventListener('click', () => trainer.next());
   $('#trPredict').addEventListener('change', () => trainer.next());
 
+  /* ================= TRACK RECORD ================= */
+  const track = { tf: 'D', view: 'chart' };
+  function renderTrack() {
+    const box = $('#view-track');
+    if (!T) { box.innerHTML = '<div class="card tr-hero"><h2>No backtest data</h2><p>Run backtest/run.js and backtest/report.js to generate it.</p></div>'; return; }
+    const U = T.universe, O = T.overall;
+    const trades = ['D', 'W', 'M'].reduce((a, tf) => a + (O[tf] ? O[tf].n : 0), 0);
+    const acc = T.accuracy;
+    const accAvg = nl => { const ks = Object.keys(acc.res); return ks.reduce((a, k) => a + acc.res[k][nl].recall, 0) / ks.length; };
+    const fa = acc ? Object.values(acc.falseAlarmsPer1000).reduce((a, b) => a + b, 0) : null;
+    const vD = T.volume.chart.D, bD = T.volume.breakout.D;
+    let vWins = 0, vTot = 0; const vDiffs = [];
+    for (const kind of ['chart', 'breakout']) for (const tf of ['D', 'W']) for (const per of ['a', 'b']) {
+      const x = T.volume[kind][tf]; if (!x || !x.strong[per].n || !x.weak[per].n) continue;
+      vTot++; const d = x.strong[per].edge - x.weak[per].edge; vDiffs.push(d); if (d > 0) vWins++;
+    }
+    const vAll = ['chart', 'breakout'].flatMap(k => ['D', 'W'].map(tf => T.volume[k][tf]));
+    // setups that beat random overall AND in both periods on daily
+    const robust = Object.keys(T.byKey).filter(k => {
+      const st = T.byKey[k].D, ps = T.byKeySet[k] && T.byKeySet[k].D;
+      return st && B.verdict(st).k === 'good' && ps && ps.a.n >= 30 && ps.b.n >= 30 && ps.a.edge > 0 && ps.b.edge > 0;
+    });
+    const worst = Object.keys(T.byKey).filter(k => T.byKey[k].D && B.verdict(T.byKey[k].D).k === 'bad');
+    box.innerHTML = `
+      <div class="card tr-hero">
+        <div class="eyebrow">Track record · generated ${esc(T.generated)}</div>
+        <h2>Does the scanner see patterns, and do the patterns pay?</h2>
+        <p>Two separate tests. <b>Recognition</b>: on charts where we planted a known pattern, does the scanner name it? <b>Outcome</b>: on ${U.series} real price histories of S&amp;P 500 stocks (2000–2012 and 2016–2020), we replayed the scanner one bar at a time, so it never saw the future, traded every setup by its own plan and compared each result with random entries that used the same direction, stop and target distances.</p>
+        <div class="tiles">
+          <div class="tile"><b>${acc ? (accAvg('low') * 100).toFixed(0) + '%' : '–'}</b><span>patterns named correctly on clean charts (${acc ? (accAvg('high') * 100).toFixed(0) + '%' : '–'} on noisy ones)</span></div>
+          <div class="tile"><b>${fmtN(trades)}</b><span>simulated trades on real stocks, daily + weekly + monthly</span></div>
+          <div class="tile"><b>${sgn(O.D.avgR)}R</b><span>average daily trade, vs ${sgn(O.D.ctrlAvgR)}R for random entries</span></div>
+          <div class="tile"><b>${vWins} of ${vTot}</b><span>comparisons where strong-volume breaks beat weak-volume breaks</span></div>
+        </div>
+      </div>
+      <div class="finds">
+        <div class="find card"><h4>1. A pattern alone is not an edge</h4><p>Across all setups the average trade landed within a few hundredths of an R of random entries on every timeframe. Shapes form by chance too: on purely random prices the scanner still finds about ${fa ? fa.toFixed(0) : '–'} confirmed pattern breaks per 1,000 bars, just as a human eye would. Treat a pattern as a plan (where you are wrong, where you take profit), not a prediction.</p></div>
+        <div class="find card"><h4>2. Volume helps, modestly</h4><p>Of the checklist items, only volume made a repeatable difference. Breaks on at least 1.5× average volume beat weak-volume breaks in ${vWins} of ${vTot} comparisons (patterns and level breaks, daily and weekly, both periods), by up to ${Math.max(...vDiffs).toFixed(2)}R per trade. Daily pattern breaks: ${sgn(vD.strong.all.edge)}R vs random with strong volume, ${sgn(vD.weak.all.edge)}R with weak. Trend alignment and the overall checklist score did not beat random entries made in the same direction.</p></div>
+        <div class="find card"><h4>3. Few setups beat random in both periods</h4><p>${robust.length ? 'On daily charts: <b>' + robust.map(k => esc(title(k))).join(', ') + '</b> beat random overall and stayed positive in both 2000–12 and 2016–20.' : 'On daily charts no single setup beat random clearly in both periods.'} ${worst.length ? 'Clearly worse than random: ' + worst.map(k => esc(title(k))).join(', ') + '.' : ''} Several setups that looked good in one period faded in the other, which is why the app shows every number with its sample size.</p></div>
+      </div>
+      <div class="card plot-card">
+        <div class="plot-head">
+          <h3>Average result per trade vs random entry</h3>
+          <div class="toolbar">
+            <div class="seg" role="radiogroup" aria-label="Timeframe" id="trkTf">${['D', 'W', 'M'].map(tf => `<button type="button" role="radio" data-tf="${tf}" aria-checked="${track.tf === tf}">${TFW[tf]}</button>`).join('')}</div>
+            <div class="seg" role="radiogroup" aria-label="View" id="trkView"><button type="button" role="radio" data-v="chart" aria-checked="${track.view === 'chart'}">Chart</button><button type="button" role="radio" data-v="table" aria-checked="${track.view === 'table'}">Table</button></div>
+          </div>
+        </div>
+        <div style="padding:10px 16px 0" class="legend">
+          <span><i class="sig"></i>Setup's average (line = 95% range)</span><span><i class="ctrl"></i>Random entry, same trade shape</span>
+          <span class="vd good">Beat random</span><span class="vd flat">No measurable edge</span><span class="vd bad">Worse than random</span>
+        </div>
+        <div class="plot-wrap" id="trkPlot"></div>
+      </div>
+      <div class="card plot-card">
+        <div class="plot-head"><h3>Recognition test</h3><span class="muted" style="font-size:12px">${acc ? acc.seeds : ''} planted examples per pattern and noise level</span></div>
+        <div class="tbl-wrap" style="padding:4px 6px 10px">${accTable()}</div>
+      </div>
+      <div class="card method">
+        <h3>How the test works</h3>
+        <ul>
+          <li><b>Data:</b> about 95 S&amp;P 500 stocks for 2000–2012 and 93 for 2016–2020 (split and dividend adjusted), from public GitHub datasets. Weekly and monthly bars are built from the daily data.</li>
+          <li><b>No look-ahead:</b> at every bar the scanner sees only the past (a trailing window of ${B.TF.D.win} daily / ${B.TF.W.win} weekly / ${B.TF.M.win} monthly bars). A setup is traded only on the bar it first appears.</li>
+          <li><b>Trades:</b> breakouts and confirmed patterns enter at the next bar's open; candle and trend-line setups need price to reach the trigger within 3 bars. Exit at the plan's stop or target, or after ${B.TF.D.hold} / ${B.TF.W.hold} / ${B.TF.M.hold} bars. If stop and target fall in the same bar we assume the stop. No commissions or slippage.</li>
+          <li><b>Random control:</b> for every trade, 5 random entries in the same stock, same direction, with the same stop and target distances measured in ATR. "Edge" is the setup's average minus the random average. This separates the pattern's contribution from the market's drift (stocks mostly rose, so longs look good everywhere).</li>
+          <li><b>Two periods:</b> the detection rules were tuned while looking at 2000–2012; 2016–2020 is a check on rules that were not fitted to it.</li>
+          <li><b>R:</b> results are in multiples of the planned risk. +1R = gained what you risked; −1R = stopped out.</li>
+          <li><b>Checklist score:</b> the 0–100 score did not separate winners from losers (every score band was within ±0.02R of random on daily charts). It stays in the app as a teaching aid; the volume item is the one that showed a repeatable effect.</li>
+          <li><b>Limits:</b> large US stocks only, two periods, simple exits. A pattern that shows "no measurable edge" can still be a useful way to place a stop and target; it just did not predict direction better than chance here.</li>
+        </ul>
+      </div>`;
+    $('#trkTf').addEventListener('click', e => { const b = e.target.closest('button[data-tf]'); if (!b) return; track.tf = b.dataset.tf; $('#trkTf').querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b))); drawTrk(); });
+    $('#trkView').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; track.view = b.dataset.v; $('#trkView').querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b))); drawTrk(); });
+    drawTrk();
+  }
+  function accTable() {
+    const acc = T.accuracy; if (!acc) return '';
+    const cols = Object.keys(acc.noise);
+    const cell = x => `<td><span style="display:inline-block;width:${Math.round(x * 46)}px;height:6px;border-radius:3px;background:var(--accent);opacity:.55;margin-right:6px;vertical-align:1px"></span>${(x * 100).toFixed(0)}%</td>`;
+    return `<table class="data"><thead><tr><th>Pattern</th>${cols.map(c => `<th>${c} noise</th>`).join('')}<th>Break bar right</th><th>Opposite-bias mix-up</th></tr></thead><tbody>
+      ${Object.entries(acc.res).map(([k, r]) => `<tr><td>${esc(title(k))}</td>${cols.map(c => cell(r[c].recall)).join('')}<td>${(r.medium.timing * 100).toFixed(0)}%</td><td>${(r.high.mislabel * 100).toFixed(0)}%</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+  function drawTrk() {
+    const tf = track.tf, wrap = $('#trkPlot');
+    const rows = Object.entries(T.byKey).filter(([, v]) => v[tf] && v[tf].n >= 30).map(([k, v]) => [k, v[tf]]).sort((a, b) => b[1].edge - a[1].edge);
+    if (track.view === 'table') {
+      wrap.innerHTML = `<div class="tbl-wrap" style="padding:0 6px"><table class="data"><thead><tr><th>Setup</th><th>Trades</th><th>Win</th><th>Hit target</th><th>Avg R</th><th>±95%</th><th>Random R</th><th>Edge</th><th>2000–12</th><th>2016–20</th><th>Verdict</th></tr></thead><tbody>
+        ${rows.map(([k, st]) => { const ps = T.byKeySet[k][tf]; const v = B.verdict(st); return `<tr><td>${esc(title(k))}</td><td>${fmtN(st.n)}</td><td>${(st.win * 100).toFixed(0)}%</td><td>${(st.tgt * 100).toFixed(0)}%</td><td>${sgn(st.avgR)}</td><td>${st.ci.toFixed(2)}</td><td>${sgn(st.ctrlAvgR)}</td><td>${sgn(st.edge)}</td><td>${ps.a.n ? sgn(ps.a.edge) : '–'}</td><td>${ps.b.n ? sgn(ps.b.edge) : '–'}</td><td><span class="vd ${v.k}">${v.label}</span></td></tr>`; }).join('')}
+        </tbody></table></div>`;
+      return;
+    }
+    const W = 960, RH = 28, top = 26, labW = 200, plotL = labW + 10, plotR = 650, H = top + rows.length * RH + 30;
+    const vals = rows.flatMap(([, st]) => [st.avgR - st.ci, st.avgR + st.ci, st.ctrlAvgR]);
+    let lo = Math.min(-0.25, ...vals), hi = Math.max(0.25, ...vals);
+    const step = (hi - lo) > 1.2 ? 0.5 : 0.25;
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    const X = v => plotL + (v - lo) / (hi - lo) * (plotR - plotL);
+    const ticks = []; for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(2));
+    const colOf = k => (k === 'good' ? 'var(--good)' : k === 'bad' ? 'var(--bad)' : 'var(--flat)');
+    let svg = `<svg class="dotplot" viewBox="0 0 ${W} ${H}" role="img" aria-label="Average R per setup versus random entry, ${TFW[tf]}">`;
+    svg += ticks.map(v => `<line x1="${X(v)}" x2="${X(v)}" y1="${top - 6}" y2="${H - 24}" stroke="${v === 0 ? 'var(--fg-muted)' : 'var(--line)'}" stroke-width="${v === 0 ? 1.2 : 1}"/><text class="muted-t" x="${X(v)}" y="${H - 8}" text-anchor="middle">${v > 0 ? '+' : ''}${v}R</text>`).join('');
+    svg += `<text class="muted-t" x="${plotR + 16}" y="${top - 10}">Trades</text><text class="muted-t" x="${plotR + 76}" y="${top - 10}">Win</text><text class="muted-t" x="${plotR + 124}" y="${top - 10}">Edge</text><text class="muted-t" x="${plotR + 184}" y="${top - 10}">Verdict</text>`;
+    rows.forEach(([k, st], j) => {
+      const y = top + j * RH + RH / 2, v = B.verdict(st), c = colOf(v.k);
+      svg += `<g class="row" data-k="${k}"><rect class="hit" x="0" y="${y - RH / 2}" width="${W}" height="${RH}" fill="transparent" rx="4"/>
+        <text x="${labW}" y="${y + 4}" text-anchor="end">${esc(title(k))}</text>
+        <line x1="${X(st.avgR - st.ci)}" x2="${X(st.avgR + st.ci)}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="${X(st.ctrlAvgR)}" cy="${y}" r="5" fill="var(--surface)" stroke="var(--ctrl)" stroke-width="2"/>
+        <circle cx="${X(st.avgR)}" cy="${y}" r="5.5" fill="${c}" stroke="var(--surface)" stroke-width="2"/>
+        <text class="num-t" x="${plotR + 16}" y="${y + 4}">${fmtN(st.n)}</text>
+        <text class="num-t" x="${plotR + 76}" y="${y + 4}">${(st.win * 100).toFixed(0)}%</text>
+        <text class="num-t" x="${plotR + 124}" y="${y + 4}">${sgn(st.edge)}</text>
+        <text x="${plotR + 184}" y="${y + 4}" style="fill:${c};font-weight:700;font-size:11.5px">${v.k === 'good' ? '▲ ' : v.k === 'bad' ? '▼ ' : ''}${v.label}</text></g>`;
+    });
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+    const tip = document.querySelector('.tip') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'tip', hidden: true }));
+    wrap.querySelectorAll('.row').forEach(g => {
+      g.addEventListener('mousemove', e => {
+        const k = g.dataset.k, st = T.byKey[k][tf], ps = T.byKeySet[k][tf];
+        tip.innerHTML = `<b>${esc(title(k))}</b> · ${TFW[tf]}<br><span class="num">${fmtN(st.n)} trades · win ${(st.win * 100).toFixed(0)}% · hit target ${(st.tgt * 100).toFixed(0)}%</span><br><span class="num">avg ${sgn(st.avgR)}R (±${st.ci.toFixed(2)}) · random ${sgn(st.ctrlAvgR)}R</span><br><span class="num">edge 2000–12 ${ps.a.n ? sgn(ps.a.edge) : '–'} · 2016–20 ${ps.b.n ? sgn(ps.b.edge) : '–'}</span><br><span class="muted">Click to open the lesson</span>`;
+        tip.hidden = false;
+        const x = Math.min(window.innerWidth - 300, e.clientX + 14); tip.style.left = x + 'px'; tip.style.top = (e.clientY + 14) + 'px';
+      });
+      g.addEventListener('mouseleave', () => { tip.hidden = true; });
+      g.addEventListener('click', () => { tip.hidden = true; openLesson(g.dataset.k); location.hash = 'learn'; });
+      g.style.cursor = 'pointer';
+    });
+  }
+
   /* ================= ROUTING & THEME ================= */
-  const VIEWS = ['analyze', 'learn', 'trainer'];
+  const VIEWS = ['analyze', 'learn', 'trainer', 'track'];
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'analyze';
     VIEWS.forEach(n => { $('#view-' + n).hidden = n !== v; });
     document.querySelectorAll('.tabs a').forEach(a => a.setAttribute('aria-current', a.dataset.view === v ? 'page' : 'false'));
     if (v === 'learn') { if (!$('#article').innerHTML) openLesson(libKey); else libChart.render(); }
     if (v === 'trainer' && !trainer.cur) trainer.next();
+    if (v === 'track' && !$('#view-track').innerHTML) renderTrack();
     if (v === 'analyze') chart.render();
     if (v === 'trainer') trChart.render();
   }
   window.addEventListener('hashchange', route);
-  const rerender = () => { chart.render(); trChart.render(); if (libChart.bars.length) openLesson(libKey); };
+  const rerender = () => { chart.render(); trChart.render(); if (libChart.bars.length) openLesson(libKey); if (state.bt && !state.bt.running) renderBt(); };
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender); } catch (e) { /* old browsers */ }
   new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => chart.render());

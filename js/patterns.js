@@ -159,8 +159,10 @@
       if (top ? maxOf(bars, p0.i - w, p0.i, 'h')[0] > peak + 0.5 * a : minOf(bars, p0.i - w, p0.i, 'l')[0] < peak - 0.5 * a) continue;
       const neck = p1.price;
       let brk = -1, invalid = false;
+      const expiry = p2.i + Math.max(10, p2.i - p0.i); // a break much later than this is unrelated
       for (let k = p2.i + 1; k < n; k++) {
         const t = 0.1 * atr[k];
+        if (k > expiry) { invalid = true; break; }
         if (top ? bars[k].c > peak + 0.5 * atr[k] : bars[k].c < peak - 0.5 * atr[k]) { invalid = true; break; }
         if (top ? bars[k].c < neck - t : bars[k].c > neck + t) { brk = k; break; }
       }
@@ -186,7 +188,7 @@
         volRatio: brk !== -1 ? volRatio(bars, brk) : null,
         plan: plan(entry, stop, target),
         overlay: [
-          { t: 'poly', pts: [[p0.i, p0.price], [p1.i, p1.price], [p2.i, p2.price]], labels: [top ? 'Top 1' : 'Bottom 1', 'Neck', top ? 'Top 2' : 'Bottom 2'] },
+          { t: 'poly', pts: [[p0.i, p0.price], [p1.i, p1.price], [p2.i, p2.price]], labels: [top ? 'Top 1' : 'Bottom 1', '', top ? 'Top 2' : 'Bottom 2'] },
           { t: 'hline', y: neck, from: p0.i, to: endI, label: 'Neckline' },
         ],
       });
@@ -207,11 +209,15 @@
       const neckLn = lineThrough(l1, l2);
       const height = Math.abs(hd.price - neckLn.at(hd.i));
       if (height < 3 * a) continue;
-      if (Math.abs(neckLn.b) * (l2.i - l1.i) > height * 0.5) continue;
+      if (Math.abs(neckLn.b) * (l2.i - l1.i) > height * 0.4) continue;
+      const tl = hd.i - ls.i, tr = rs.i - hd.i; // shoulders roughly balanced in time
+      if (tl / tr > 2.5 || tr / tl > 2.5) continue;
       if (rs.i - ls.i > 160) continue;
       if (priorMove(bars, ls.i, 40, sign) < height * 0.6) continue;
       let brk = -1, invalid = false;
+      const expiry = rs.i + Math.max(10, Math.round((rs.i - ls.i) * 0.75));
       for (let k = rs.i + 1; k < n; k++) {
+        if (k > expiry) { invalid = true; break; }
         if (top ? bars[k].c > hd.price : bars[k].c < hd.price) { invalid = true; break; }
         const t = 0.1 * atr[k];
         if (top ? bars[k].c < neckLn.at(k) - t : bars[k].c > neckLn.at(k) + t) { brk = k; break; }
@@ -243,8 +249,9 @@
 
   const CONV_BIAS = { asc_triangle: 'bull', desc_triangle: 'bear', sym_triangle: 'neutral', rising_wedge: 'bear', falling_wedge: 'bull', channel_up: 'bull', channel_down: 'bear', rectangle: 'neutral' };
 
-  function scanConverging(bars, piv, atr, out) {
+  function scanConverging(bars, pivAll, atr, out) {
     const n = bars.length;
+    const piv = pivAll.filter(p => !p.tentative); // only confirmed swings define the lines
     const found = [];
     for (let end = piv.length - 1; end >= Math.max(3, piv.length - 5) && found.length < 2; end--) {
       for (const m of [7, 6, 5, 4]) {
@@ -252,9 +259,11 @@
         if (s < 0) continue;
         const ps = piv.slice(s, end + 1);
         const H = ps.filter(p => p.type === 'H'), L = ps.filter(p => p.type === 'L');
-        if (H.length < 2 || L.length < 2) continue;
+        if (H.length < 2 || L.length < 2 || H.length + L.length < 5) continue;
         const i0 = ps[0].i, i1 = ps[ps.length - 1].i, span = i1 - i0;
         if (span < 12 || span > 130) continue;
+        // both lines must be drawn through swings spread across the pattern, not one outlier
+        if (H[H.length - 1].i - H[0].i < 0.45 * span || L[L.length - 1].i - L[0].i < 0.45 * span) continue;
         if (found.some(f => !(i1 < f.i0 || i0 > f.i1))) continue;
         const lh = fit(H), ll = fit(L);
         const a = atr[i1];
@@ -265,7 +274,9 @@
         for (let k = i0; k <= i1; k++) if (bars[k].c > lh.at(k) + 0.5 * atr[k] || bars[k].c < ll.at(k) - 0.5 * atr[k]) outside++;
         if (outside > span * 0.1) continue;
         const dH = lh.b * span / a, dL = ll.b * span / a;
-        const flatH = Math.abs(dH) < 1.2, flatL = Math.abs(dL) < 1.2;
+        // "flat" = moves less than 1.2 ATR and less than 3% of price across the pattern
+        const px = bars[i1].c;
+        const flatH = Math.abs(dH) < 1.2 && Math.abs(lh.b * span) < 0.03 * px, flatL = Math.abs(dL) < 1.2 && Math.abs(ll.b * span) < 0.03 * px;
         const conv = w1 < w0 * 0.75, par = Math.abs(w1 - w0) < 0.3 * w0;
         let key = null;
         if (flatH && dL > 1.5 && conv) key = 'asc_triangle';
@@ -277,16 +288,23 @@
         else if (par && dH < -2 && dL < -2) key = 'channel_down';
         else if (flatH && flatL && par && (H.length + L.length) >= 4) key = 'rectangle';
         if (!key) continue;
+        // parallel shapes form easily by chance: need three touches on each line
+        if ((key === 'channel_up' || key === 'channel_down' || key === 'rectangle') && (H.length < 3 || L.length < 3)) continue;
         // apex for converging shapes
         const apex = lh.b !== ll.b ? (ll.a - lh.a) / (lh.b - ll.b) : Infinity;
+        // a converging pattern must break before ~80% of the way to its apex
+        const conv2 = key !== 'channel_up' && key !== 'channel_down' && key !== 'rectangle';
+        const lastValid = conv2 ? i0 + 0.8 * (apex - i0) : Infinity;
+        if (conv2 && !(apex > i1) ) continue;
         let brk = -1, dir = 0;
         for (let k = i1 + 1; k < n; k++) {
-          if (k > apex) break;
+          if (k > lastValid) break;
           const t = 0.15 * atr[k];
           if (bars[k].c > lh.at(k) + t) { brk = k; dir = 1; break; }
           if (bars[k].c < ll.at(k) - t) { brk = k; dir = -1; break; }
         }
-        if (brk === -1 && (end < piv.length - 2 || i1 < n - 40 || n - 1 > apex)) continue;
+        if (brk === -1 && (end < piv.length - 2 || i1 < n - 40 || n - 1 > lastValid)) continue;
+        const hgt = lh.at(ps[1].i) - ll.at(ps[1].i); // measured height, skipping the entry swing
         if (brk !== -1 && brk < n - 60) continue;
         // a break must still hold (or be the latest bar) to count as confirmed
         let failed = -1;
@@ -296,15 +314,15 @@
         const expected = CONV_BIAS[key];
         const bias = brk !== -1 ? (dir > 0 ? 'bull' : 'bear') : expected;
         const endI = brk === -1 ? n - 1 : Math.min(n - 1, brk + 6);
-        const lineEnd = Math.min(endI, isFinite(apex) ? Math.floor(apex) : endI);
+        const lineEnd = conv2 && isFinite(apex) && apex > i1 ? Math.min(endI, Math.floor(apex)) : endI;
         let entry, stop, target;
         const lastLow = L[L.length - 1].price, lastHigh = H[H.length - 1].price;
         if (bias === 'bull' || (bias === 'neutral')) {
           const bk = brk !== -1 ? lh.at(brk) : lh.at(n - 1);
-          entry = bk + 0.1 * a; stop = Math.max(lastLow, ll.at(brk !== -1 ? brk : n - 1)) - 0.25 * a; target = bk + w0;
+          entry = bk + 0.1 * a; stop = Math.max(lastLow, ll.at(brk !== -1 ? brk : n - 1)) - 0.25 * a; target = bk + hgt;
         } else {
           const bk = brk !== -1 ? ll.at(brk) : ll.at(n - 1);
-          entry = bk - 0.1 * a; stop = Math.min(lastHigh, lh.at(brk !== -1 ? brk : n - 1)) + 0.25 * a; target = bk - w0;
+          entry = bk - 0.1 * a; stop = Math.min(lastHigh, lh.at(brk !== -1 ? brk : n - 1)) + 0.25 * a; target = bk - hgt;
         }
         if (key === 'channel_up' && brk === -1) { entry = ll.at(n - 1) + 0.3 * a; stop = ll.at(n - 1) - 0.8 * a; target = lh.at(n - 1); }
         if (key === 'channel_down' && brk === -1) { entry = lh.at(n - 1) - 0.3 * a; stop = lh.at(n - 1) + 0.8 * a; target = ll.at(n - 1); }
@@ -351,7 +369,7 @@
         for (; k < n && k <= e + 16; k++) {
           const b = bars[k];
           if (bull ? b.l < tip - 0.55 * pole : b.h > tip + 0.55 * pole) { ok = false; break; }
-          if (k - e >= 4) {
+          if (k - e >= 5) {
             const t = 0.1 * atr[k];
             if (bull ? b.c > ext + t : b.c < ext - t) { brk = k; break; }
           }
@@ -360,7 +378,7 @@
         }
         if (!ok) continue;
         if (brk === -1 && k > e + 16) continue; // flag ran too long without breaking
-        if (brk === -1 && n - 1 - e < 4) continue;
+        if (brk === -1 && n - 1 - e < 5) continue;
         const flagEnd = brk === -1 ? n - 1 : brk - 1;
         const [fHi] = maxOf(bars, e + 1, flagEnd, 'h');
         const [fLo] = minOf(bars, e + 1, flagEnd, 'l');
@@ -408,8 +426,8 @@
       // three-bar
       if (bear(q) && qBody > avg && pBody < 0.35 * qBody && Math.max(p.o, p.c) < q.c + 0.15 * qBody && bull(b) && b.c > (q.o + q.c) / 2 && q.c < bars[Math.max(0, i - 8)].c) hits.push('morning_star');
       if (bull(q) && qBody > avg && pBody < 0.35 * qBody && Math.min(p.o, p.c) > q.c - 0.15 * qBody && bear(b) && b.c < (q.o + q.c) / 2 && (q.c > bars[Math.max(0, i - 8)].c)) hits.push('evening_star');
-      const soldier = (x, y) => bull(x) && Math.abs(x.c - x.o) > 0.6 * avg && x.c > y.c && x.o >= Math.min(y.o, y.c) - 0.1 * avg && (x.h - x.c) < 0.35 * Math.abs(x.c - x.o);
-      const crow = (x, y) => bear(x) && Math.abs(x.c - x.o) > 0.6 * avg && x.c < y.c && x.o <= Math.max(y.o, y.c) + 0.1 * avg && (x.c - x.l) < 0.35 * Math.abs(x.c - x.o);
+      const soldier = (x, y) => bull(x) && Math.abs(x.c - x.o) > 0.6 * avg && x.c > y.c && x.o >= Math.min(y.o, y.c) - 0.1 * avg && x.o <= Math.max(y.o, y.c) + 0.1 * avg && (x.h - x.c) < 0.35 * Math.abs(x.c - x.o);
+      const crow = (x, y) => bear(x) && Math.abs(x.c - x.o) > 0.6 * avg && x.c < y.c && x.o <= Math.max(y.o, y.c) + 0.1 * avg && x.o >= Math.min(y.o, y.c) - 0.1 * avg && (x.c - x.l) < 0.35 * Math.abs(x.c - x.o);
       if (bull(q) && Math.abs(q.c - q.o) > 0.6 * avg && soldier(p, q) && soldier(b, p)) hits.push('three_soldiers');
       if (bear(q) && Math.abs(q.c - q.o) > 0.6 * avg && crow(p, q) && crow(b, p)) hits.push('three_crows');
       // two-bar
@@ -651,8 +669,8 @@
       // a shape that broke against its usual direction never outranks one that didn't
       const beats = (t, u) => {
         if (t.against !== u.against) return !t.against;
-        if (PRI[t.key] > PRI[u.key]) return span(t) >= 0.4 * span(u);
-        if (PRI[t.key] < PRI[u.key]) return span(u) < 0.4 * span(t);
+        if (PRI[t.key] > PRI[u.key]) return span(t) >= 0.7 * span(u);
+        if (PRI[t.key] < PRI[u.key]) return span(u) < 0.7 * span(t);
         return span(t) > span(u);
       };
       const clash = sigs.some(t => t !== s && t.bias === s.bias && beats(t, s) &&
@@ -733,6 +751,12 @@
       });
     }
 
+    // stops closer than 0.75 ATR sit inside normal bar-to-bar noise: widen them
+    for (const s of sigs) {
+      const p = s.plan; if (!p) continue;
+      const a = atr[Math.min(n - 1, s.i)], dir = p.target > p.entry ? 1 : -1;
+      if (dir * (p.entry - p.stop) < 0.75 * a) { const np = plan(p.entry, p.entry - dir * 0.75 * a, p.target); np.widened = true; s.plan = np; }
+    }
     // score, then sort: fresh & high quality first
     for (const s of sigs) {
       const cl = checklist(s, bars, ind, levels, tls);

@@ -37,7 +37,7 @@
   };
   L.volume = {
     title: 'Volume confirmation', cat: 'Foundations', bias: 'neutral',
-    short: 'Volume shows conviction. Breakouts on heavy volume tend to hold; breakouts on light volume tend to fail.',
+    short: 'Volume shows conviction. Breaks on heavy volume tend to do better than breaks on light volume. In our backtest the difference was real but modest.',
     why: 'A move through a level needs new money. When volume is 1.5–2× its 20-day average, large participants are acting. On light volume, a few orders can push price through and then it falls back.',
     spot: ['Compare the break-bar volume with the 20-day average line in the volume pane.', 'Volume should shrink during consolidations (flags, triangles) and expand on the break.'],
     confirm: ['This app counts 1.5× average or more as confirmation and 1.1–1.5× as partial.'],
@@ -64,6 +64,17 @@
     trade: ['Put stops where the pattern is proven wrong, not at a round dollar amount.', 'Consider taking part of the position off at 1R or 2R and trailing the rest.'],
     mistakes: ['Widening the stop after entry.', 'Sizing by conviction instead of by distance to the stop.'],
     diagram: { tpl: 'bull_flag' },
+  };
+
+  L.evidence = {
+    title: 'Patterns are plans, not predictions', cat: 'Foundations', bias: 'neutral',
+    short: 'We tested every setup in this app on real stocks. As a group they did about as well as random entries with the same stop and target. What they give you is structure: a clear trigger, a place to be wrong and a target.',
+    why: 'Markets are mostly noise over days and weeks. Random price paths form double tops, triangles and flags all the time, so a shape on its own carries little information. What helped in our test was modest: breaks on strong volume did better than breaks on weak volume. Beyond that, the value of a pattern is the discipline it brings: a defined trigger, stop and target, and position sizes that survive a losing streak.',
+    spot: ['Check the Track record box on every setup: trades, win rate, average R and how random entries did.', 'A setup that "beat random" in both test periods deserves more trust than one that did well in only one.', 'Small samples (under ~100 trades) swing a lot; read them as hints.'],
+    confirm: ['Prefer breaks on 1.5× average volume or more. It was the one checklist item that made a repeatable difference, though a modest one.', 'Prefer the setups the backtest marks as beating random on your timeframe.'],
+    trade: ['Use the pattern to define the trade: entry trigger, stop where the idea is wrong, target from the measured move.', 'Risk a fixed small fraction per trade (for example 1%), because many setups lose.', 'Run "Backtest this chart" on a stock before trading its patterns, to see how they behaved on it.'],
+    mistakes: ['Believing a pattern "means" price will go somewhere.', 'Trusting a win rate without comparing it with what random entries would have done in the same market.'],
+    diagram: { tpl: 'double_top' },
   };
 
   /* ---------------- breakouts ---------------- */
@@ -145,7 +156,7 @@
     title: 'Double top', cat: 'Reversal patterns', bias: 'bear',
     short: 'Two peaks at roughly the same price with a dip (the neckline) between them. Confirmed when price closes below the neckline.',
     why: 'Buyers had two chances to push past the same price and failed both times. When the neckline (the low between the peaks) breaks, everyone who bought the second peak is losing money.',
-    spot: ['A prior uptrend into the first top.', 'Second top within about 1 ATR of the first.', 'Dip between them of at least 2.5 ATR (or ~4%).'],
+    spot: ['A prior uptrend into the first top.', 'Second top within about 1 ATR of the first.', 'Dip between them of at least 2.5 ATR and at least 4% of price.'],
     confirm: ['A close below the neckline. Before that it is only a pullback.', 'Higher volume on the breakdown; second peak often has lower volume than the first.'],
     trade: ['Entry: close below the neckline or a failed retest of it.', 'Stop: midway back into the pattern, or above the second peak for the conservative version.', 'Target: neckline minus the pattern height.'],
     mistakes: ['Shorting the second peak before the neckline breaks. Many "double tops" become breakouts.'],
@@ -155,7 +166,7 @@
     title: 'Double bottom', cat: 'Reversal patterns', bias: 'bull',
     short: 'Two troughs at about the same price with a rally between them. Confirmed by a close above that rally high (the neckline).',
     why: 'Sellers pushed to the same low twice and could not break it. A close above the neckline shows buyers are now in control.',
-    spot: ['A prior downtrend into the first low.', 'Second low within about 1 ATR of the first (a slight undercut that reverses is fine).', 'Rally between them of at least 2.5 ATR.'],
+    spot: ['A prior downtrend into the first low.', 'Second low within about 1 ATR of the first (a slight undercut that reverses is fine).', 'Rally between them of at least 2.5 ATR and at least 4% of price.'],
     confirm: ['A close above the neckline on strong volume.'],
     trade: ['Entry: on the neckline break or the retest.', 'Stop: midway into the pattern (about 2:1 reward/risk) or below the lows (closer to 1:1).', 'Target: neckline plus the pattern height.'],
     mistakes: ['Buying the second low with no confirmation in a strong downtrend.'],
@@ -188,7 +199,7 @@
     spot: ['At least two highs at the same level.', 'At least two rising lows.', 'Volume contracting as the triangle narrows.'],
     confirm: ['A close above the flat top with volume expansion.'],
     trade: ['Entry: on the breakout close.', 'Stop: below the last higher low.', 'Target: the triangle\'s height at its widest, added to the breakout.'],
-    mistakes: ['Buying near the ceiling before it breaks.', 'Ignoring a break to the downside: about a third of ascending triangles break down, and then the break is the signal.'],
+    mistakes: ['Buying near the ceiling before it breaks.', 'Ignoring a break to the downside. A good share of ascending triangles break down, and then the break is the signal.'],
     diagram: { tpl: 'asc_triangle' },
   };
   L.desc_triangle = {
@@ -237,8 +248,8 @@
     why: 'An orderly trend: buyers enter near the lower line, profit-takers sell near the upper one.',
     spot: ['Parallel rising lines with at least two touches each.'],
     confirm: ['Bounces from the lower line with bullish candles.'],
-    trade: ['Buy near the lower line; stop below it; target the upper line.', 'A close below the lower line ends the setup.'],
-    mistakes: ['Buying at the upper line in the middle of the channel\'s range.'],
+    trade: ['Classic approach: buy near the lower line, stop below it, target the upper line.', 'Our backtest does not support buying the lower line blindly: it did worse than random entries on daily, weekly and monthly charts. Wait for a bullish reversal candle on strong volume at the line, or treat the channel only as a map of where the trend is.', 'A close below the lower line ends the setup.'],
+    mistakes: ['Buying the lower line just because it was touched.', 'Buying at the upper line in the middle of the channel\'s range.'],
     diagram: { path: [[0, 80], [6, 90], [5, 85], [6, 95], [5, 90], [6, 100], [5, 95], [6, 105]] },
   };
   L.channel_down = {

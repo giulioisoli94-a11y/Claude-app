@@ -21,6 +21,7 @@
       <a href="#analyze" data-view="analyze">Analyze</a>
       <a href="#learn" data-view="learn">Learn</a>
       <a href="#trainer" data-view="trainer">Trainer</a>
+      <a href="#track" data-view="track">Track record</a>
     </nav>
     <div class="spacer"></div>
     <div class="note">Educational tool. Not financial advice.</div>
@@ -34,7 +35,12 @@
       <select class="select" id="src" aria-label="Market data"></select>
       <button class="btn" id="randomBtn" type="button">New random market</button>
       <label class="btn file-btn">Load CSV…<input type="file" id="csv" accept=".csv,.txt,text/csv"></label>
-      <label class="toggle"><input type="checkbox" id="weekly"> Weekly bars</label>
+      <div class="seg" role="radiogroup" aria-label="Timeframe" id="tfSeg">
+        <button type="button" role="radio" data-tf="D" aria-checked="true">Daily</button>
+        <button type="button" role="radio" data-tf="W" aria-checked="false">Weekly</button>
+        <button type="button" role="radio" data-tf="M" aria-checked="false">Monthly</button>
+      </div>
+      <button class="btn" id="btBtn" type="button">Backtest this chart</button>
       <span class="err" id="csvErr" hidden></span>
     </div>
 
@@ -79,13 +85,17 @@
       <h3>Use it on your own stocks</h3>
       <ol>
         <li>Download daily prices as CSV: on Yahoo Finance open a ticker → <b>Historical Data</b> → Download, or use stooq.com, or export from your broker. You need Date, Open, High, Low, Close and ideally Volume columns.</li>
-        <li>Use at least 1 year of daily data so the 200-day average and older support levels exist.</li>
+        <li>Use at least 1 year of daily data so the 200-day average and older support levels exist. Switch to Weekly or Monthly to read the bigger picture (monthly needs about 5+ years of daily data).</li>
         <li>Click <b>Load CSV…</b>. Everything runs in your browser; the file is not uploaded anywhere.</li>
         <li>Click a setup on the right to draw it, see a trade plan and check it against the confirmation list. Click a triangle marker on the chart to open that candle pattern.</li>
+        <li>Click <b>Backtest this chart</b> to replay the scanner bar by bar over the whole history of the stock and see how each setup actually played out there.</li>
       </ol>
       <p class="disclaimer">Patterns describe tendencies, not certainties. The scanner follows textbook rules measured in ATR (average true range); it will miss some patterns and see some that a human would reject. Use it to train your eye and to structure a plan, then make your own decision.</p>
     </div>
   </section>
+
+  <!-- TRACK RECORD -->
+  <section class="view" id="view-track" hidden></section>
 
   <!-- LEARN -->
   <section class="view" id="view-learn" hidden>
@@ -130,6 +140,8 @@
 <script src="js/data.js"></script>
 <script src="js/patterns.js"></script>
 <script src="js/learn.js"></script>
+<script src="js/backtest.js"></script>
+<script src="js/trackrecord.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>
 </body>
