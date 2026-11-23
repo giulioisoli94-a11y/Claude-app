@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Swing Pattern Lab</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1d3aa6">
+<meta name="apple-mobile-web-app-title" content="Pattern Lab">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,6 +39,7 @@
   <section class="view" id="view-analyze">
     <div class="toolbar">
       <select class="select" id="src" aria-label="Market data"></select>
+      <form id="tickerForm" class="ticker-form" autocomplete="off"><input id="tickerIn" class="ticker-in" type="text" inputmode="text" placeholder="Ticker, e.g. PLTR" aria-label="Ticker symbol" maxlength="20"><button class="btn" type="submit">Load live</button></form>
       <button class="btn" id="randomBtn" type="button">New random market</button>
       <label class="btn file-btn">Load CSV…<input type="file" id="csv" accept=".csv,.txt,text/csv"></label>
       <div class="seg" role="radiogroup" aria-label="Timeframe" id="tfSeg">
@@ -43,6 +50,7 @@
       <button class="btn" id="btBtn" type="button">Backtest this chart</button>
       <span class="err" id="csvErr" hidden></span>
     </div>
+    <div class="live-status" id="liveStatus" hidden></div>
 
     <div class="analyze-grid">
       <div class="card chart-card">
@@ -79,6 +87,17 @@
         </div>
         <div class="card" id="detail"></div>
       </aside>
+    </div>
+
+    <div class="card scan" id="scanCard">
+      <div class="plot-head">
+        <div><h3>Market scan</h3><div class="muted" style="font-size:12.5px">Live setups across the major indexes and Nasdaq &amp; S&amp;P leaders, on the timeframe selected above.</div></div>
+        <div class="toolbar">
+          <button class="btn" type="button" data-scan="indexes">Scan indexes</button>
+          <button class="btn" type="button" data-scan="stocks">Scan stocks</button>
+        </div>
+      </div>
+      <div id="scanOut" class="scan-out"><p class="muted" style="margin:0">Each symbol costs 5 Firecrawl credits the first time per 15 minutes; repeat scans use the cache.</p></div>
     </div>
 
     <div class="card how">
@@ -141,6 +160,7 @@
 <script src="js/patterns.js"></script>
 <script src="js/learn.js"></script>
 <script src="js/backtest.js"></script>
+<script src="js/live.js"></script>
 <script src="js/trackrecord.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>

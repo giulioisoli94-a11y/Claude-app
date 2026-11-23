@@ -24,6 +24,7 @@ function stats(list) {
     stop: list.filter(e => e.outcome === 'stop').length / n,
     hit1R: list.filter(e => e.hit1R || e.outcome === 'target').length / n,
     held: list.reduce((a, e) => a + e.held, 0) / n,
+    pct: list.reduce((a, e) => a + (e.pct || 0), 0) / n,
     rr: list.reduce((a, e) => a + e.rr, 0) / n,
     ctrlAvgR: cavg, ctrlWin: cwin, edge: cavg == null ? null : avg - cavg,
   };
@@ -75,6 +76,37 @@ for (const tf of ['D', 'W', 'M']) {
   for (const kind of ['chart', 'breakout']) for (const [lbl, f] of [['strong', e => e.vol === true], ['weak', e => e.vol === false]]) {
     const L = T.filter(e => e.kind === kind && f(e));
     ((out.volume[kind] = out.volume[kind] || {})[tf] = out.volume[kind][tf] || {})[lbl] = { all: stats(L), a: stats(L.filter(e => e.set === 'a')), b: stats(L.filter(e => e.set === 'b')) };
+  }
+}
+// ---- breakout confirmation rules and take-profit targets ----
+out.confirm = {}; out.targets = {};
+const brk = ev.filter(e => e.v);
+const RULES = ['close', 'vol', 'follow', 'volfollow', 'retest'];
+const TGS = ['fib1272', 'fib1618', 'fib2', 'mm', 'fib2618'];
+const rs = L => { const n = L.length; if (!n) return { n: 0 }; const a = L.reduce((x, y) => x + y.r, 0) / n; const sd = Math.sqrt(L.reduce((x, y) => x + (y.r - a) ** 2, 0) / Math.max(1, n - 1)); const cs = L.filter(x => x.c != null); const ca = cs.length ? cs.reduce((x, y) => x + y.c, 0) / cs.length : null; return { n, win: L.filter(x => x.r > 0).length / n, avgR: a, ci: 1.96 * sd / Math.sqrt(n), pct: L.reduce((x, y) => x + y.pct, 0) / n, fb: L.filter(x => x.fb).length / n, ctrlAvgR: ca, edge: ca == null ? null : a - ca }; };
+for (const tf of ['D', 'W', 'M']) {
+  const E = brk.filter(e => e.tf === tf); if (!E.length) continue;
+  out.confirm[tf] = { breaks: E.length, falseBreak: E.filter(e => e.fb).length / E.length, withVolume: E.filter(e => e.hasVol).length };
+  console.log(`\n== confirmation rules · ${tf} · ${E.length} breaks · false-break rate (back inside within 5 bars) ${(out.confirm[tf].falseBreak * 100).toFixed(0)}%`);
+  console.log('rule'.padEnd(12) + '  kept   false  win   avgR   pct    edge   | 2000-12 edge  2016-20 edge');
+  for (const rule of RULES) {
+    const L = E.filter(e => e.v[rule]).map(e => Object.assign({ set: e.set }, e.v[rule]));
+    const all = rs(L), A = rs(L.filter(x => x.set === 'a')), Bb = rs(L.filter(x => x.set === 'b'));
+    out.confirm[tf][rule] = { all, a: A, b: Bb, kept: L.length / E.length };
+    if (all.n) console.log(rule.padEnd(12) + ' ' + (L.length / E.length * 100).toFixed(0).padStart(4) + '%  ' + (all.fb * 100).toFixed(0).padStart(4) + '%  ' + (all.win * 100).toFixed(0).padStart(3) + '%  ' + r2(all.avgR) + ' ' + all.pct.toFixed(2).padStart(6) + '%  ' + r2(all.edge) + '  |  ' + r2(A.edge) + '        ' + r2(Bb.edge));
+  }
+  out.targets[tf] = {};
+  for (const rule of ['close', 'follow']) {
+    const T = E.filter(e => e.tg && e.tg[rule]);
+    out.targets[tf][rule] = {};
+    console.log(`-- targets (entry rule: ${rule})`);
+    for (const k of TGS) {
+      const L = T.filter(e => e.tg[rule][k]).map(e => e.tg[rule][k]);
+      if (!L.length) continue;
+      const st = { n: L.length, hit: L.filter(x => x.hit).length / L.length, avgR: L.reduce((x, y) => x + y.r, 0) / L.length, pct: L.reduce((x, y) => x + y.pct, 0) / L.length };
+      out.targets[tf][rule][k] = st;
+      console.log('  ' + k.padEnd(9) + String(st.n).padStart(7) + '  hit ' + pct(st.hit) + '  avgR ' + r2(st.avgR) + '  avg return ' + st.pct.toFixed(2) + '%');
+    }
   }
 }
 const accFile = path.join(__dirname, 'out', 'accuracy.json');

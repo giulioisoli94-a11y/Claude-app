@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d3aa6"/>
+      <stop offset="1" stop-color="#0b1535"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.72" cy="0.28" r="0.55">
+      <stop offset="0" stop-color="#5f86ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#5f86ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="up" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4fe0a6"/>
+      <stop offset="1" stop-color="#1fae78"/>
+    </linearGradient>
+    <linearGradient id="dn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8a70"/>
+      <stop offset="1" stop-color="#e0533b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <!-- faint grid -->
+  <g stroke="#ffffff" stroke-opacity="0.07" stroke-width="4">
+    <line x1="0" y1="300" x2="1024" y2="300"/><line x1="0" y1="520" x2="1024" y2="520"/><line x1="0" y1="740" x2="1024" y2="740"/>
+  </g>
+  <!-- rising support trend line -->
+  <line x1="120" y1="860" x2="900" y2="560" stroke="#8fb0ff" stroke-opacity="0.55" stroke-width="14" stroke-linecap="round"/>
+  <!-- resistance level (dashed) -->
+  <line x1="110" y1="470" x2="914" y2="470" stroke="#ffd27a" stroke-width="16" stroke-dasharray="44 30" stroke-linecap="round"/>
+  <!-- candle 1: red -->
+  <line x1="270" y1="520" x2="270" y2="800" stroke="#f0684e" stroke-width="18" stroke-linecap="round"/>
+  <rect x="222" y="560" width="96" height="190" rx="18" fill="url(#dn)"/>
+  <!-- candle 2: green -->
+  <line x1="470" y1="430" x2="470" y2="740" stroke="#2fc58c" stroke-width="18" stroke-linecap="round"/>
+  <rect x="422" y="480" width="96" height="210" rx="18" fill="url(#up)"/>
+  <!-- candle 3: breakout green -->
+  <line x1="670" y1="250" x2="670" y2="620" stroke="#2fc58c" stroke-width="18" stroke-linecap="round"/>
+  <rect x="622" y="290" width="96" height="290" rx="18" fill="url(#up)"/>
+  <!-- breakout arrow -->
+  <path d="M760 360 L860 200" stroke="#ffffff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M800 190 L872 180 L866 254" fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

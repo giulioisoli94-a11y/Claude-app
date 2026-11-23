@@ -72,6 +72,36 @@ Random samples of real detections were rendered as contact sheets (daily, weekly
 
 Full per-setup tables are in the app's **Track record** tab and in each lesson.
 
+## 3. Breakout confirmation
+
+Every break event (level, pattern and trend-line breaks; 48,239 daily, 8,371 weekly, 1,248 monthly) was re-traded under five confirmation rules. Each rule delays or skips the entry; stop and measured-move target stay the same. "False" = closed back inside the line within 5 bars of entry.
+
+| Daily rule | Breaks kept | False breaks | Win | Avg R | Edge vs random |
+|---|---|---|---|---|---|
+| Close beyond the line | 98% | 46% | 45% | −0.00 | −0.00 |
+| **+ second close beyond (app default)** | **76%** | **39%** | **50%** | −0.00 | −0.01 |
+| + volume ≥ 1.5× | 23% | 38% | 53% | +0.03 | +0.05 (2016–20: −0.02) |
+| + volume and second close | 19% | 32% | 56% | +0.03 | +0.05 (2016–20: −0.00) |
+| Pullback retest holds | 69% | 46% | 45% | +0.00 | −0.00 |
+
+Weekly shows the same pattern (44% → 37% false breaks with the second close, 33% with volume too). Confirmation removes a real share of false breaks, but no rule produced an edge over random entries by itself. The app therefore shows a break as **Potential** after the first close, **Confirmed** after the second, **Confirmed + volume** when the break bar had ≥ 1.5× volume, **No follow-through** if the next bar closes back at the line, and **False break** if price closes back inside.
+
+## 4. Take-profit targets
+
+For each confirmed break: swing = from the base's extreme to the breakout level. Fibonacci extensions add 0.272 / 0.618 / 1.0 / 1.618 of that swing beyond the level (the 1.272 / 1.618 / 2.0 / 2.618 levels); the measured move is the pattern's own projection. Share reached before the stop:
+
+| | Fib 1.272 | Fib 1.618 | Measured move | Fib 2.0 | Fib 2.618 |
+|---|---|---|---|---|---|
+| Daily | 69% | 53% | 46% | 38% | 23% |
+| Weekly | 74% | 55% | 44% | 38% | 21% |
+| Monthly | 80% | 57% | 42% | 39% | 18% |
+
+Average R is about the same whichever target you choose (nearer targets hit more often but pay less). The app shows each target's price, gain, reward multiple and hit rate, plus the Fibonacci retracement pullback zone (38.2 / 50 / 61.8%).
+
+## Live data
+
+In claude.ai the app loads daily, weekly and monthly bars for any Yahoo Finance symbol (stocks, ETFs, ^GSPC, ^NDX, ^IXIC, ^DJI, ^RUT) through the viewer's Firecrawl connector, 5 credits per symbol and timeframe, cached 15 minutes. "Backtest this chart" then replays the scanner over that live history.
+
 ## Limits
 
 Large US stocks only, two periods, simple fixed exits, no costs. "No measurable edge" means the setup did not predict direction better than chance here. It can still be a sound way to place a stop and a target.

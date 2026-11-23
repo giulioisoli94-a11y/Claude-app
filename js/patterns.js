@@ -180,7 +180,7 @@
       const entry = top ? neck - 0.1 * a : neck + 0.1 * a;
       const endI = brk === -1 ? n - 1 : Math.min(n - 1, brk + 15);
       out.push({
-        key, kind: 'chart', bias: top ? 'bear' : 'bull',
+        key, kind: 'chart', bias: top ? 'bear' : 'bull', level: neck,
         status: failed !== -1 ? 'failed' : brk !== -1 ? 'confirmed' : 'forming',
         i: failed !== -1 ? failed : brk !== -1 ? brk : p2.i, start: p0.i, breakI: brk,
         detail: (top ? 'Two peaks' : 'Two troughs') + ' at ' + fmt(p0.price) + ' and ' + fmt(p2.price) +
@@ -232,7 +232,7 @@
       const entry = atBreak - sign * 0.1 * a;
       const endI = brk === -1 ? n - 1 : Math.min(n - 1, brk + 15);
       out.push({
-        key, kind: 'chart', bias: top ? 'bear' : 'bull',
+        key, kind: 'chart', bias: top ? 'bear' : 'bull', level: atBreak,
         status: brk !== -1 ? 'confirmed' : 'forming',
         i: brk !== -1 ? brk : rs.i, start: ls.i, breakI: brk,
         detail: 'Left shoulder ' + fmt(ls.price) + ', head ' + fmt(hd.price) + ', right shoulder ' + fmt(rs.price) +
@@ -330,6 +330,7 @@
         found.push({ i0, i1 });
         out.push({
           key, kind: 'chart', bias,
+          level: brk !== -1 ? (dir > 0 ? lh.at(brk) : ll.at(brk)) : (bias === 'bear' ? ll.at(n - 1) : lh.at(n - 1)),
           status: failed !== -1 ? 'failed' : brk !== -1 ? 'confirmed' : 'forming',
           breakDir: dir, against,
           i: failed !== -1 ? failed : brk !== -1 ? brk : i1, start: i0, breakI: brk,
@@ -389,7 +390,7 @@
         const stop = bull ? fLo - 0.25 * a : fHi + 0.25 * a;
         const target = bull ? entry + pole : entry - pole;
         out.push({
-          key, kind: 'chart', bias: bull ? 'bull' : 'bear',
+          key, kind: 'chart', bias: bull ? 'bull' : 'bear', level: bull ? fHi : fLo,
           status: brk !== -1 ? 'confirmed' : 'forming',
           i: brk !== -1 ? brk : n - 1, start: sI, breakI: brk,
           detail: 'Pole of ' + fmt(pole) + ' (' + (pole / pStart * 100).toFixed(1) + '%) in ' + (e - sI) + ' bars, then a ' +
@@ -518,7 +519,7 @@
         p = plan(entry, stop, opp ? opp.price : (up ? entry - 3 * a : entry + 3 * a));
       }
       out.push({
-        key, kind: 'breakout', bias,
+        key, kind: 'breakout', bias, level: L.price,
         status: failed !== -1 ? 'confirmed' : (n - 1 - k <= 1 ? 'fresh' : 'holding'),
         i: failed !== -1 ? failed : k, start: L.first, breakI: k, volRatio: vr, closePos: up ? closePos : 1 - closePos,
         detail: (up ? 'Closed above resistance ' : 'Closed below support ') + fmt(L.price) + ' (tested ' + e.touches + '×) on ' + b.t +
@@ -621,12 +622,73 @@
     }
     if (sig.status) {
       const ok = sig.status === 'confirmed' || sig.status === 'fresh' || sig.status === 'holding';
-      items.push({ k: 'conf', ok: ok ? true : sig.status === 'failed' ? false : null, label: 'Confirmed by a close', why: ok ? 'The trigger has closed beyond the line.' : sig.status === 'failed' ? 'The move reversed after triggering.' : 'Still forming. Act on the trigger, not the guess.' });
+      const why = ok ? (sig.confirm && sig.confirm.broke ? 'Two closes beyond the line: the break has follow-through.' : 'The trigger has closed beyond the line.')
+        : sig.status === 'failed' ? 'Price closed back inside after the break: a false break.'
+        : sig.status === 'potential' ? 'One close beyond the line so far. Wait for a second close before treating it as a breakout.'
+        : sig.status === 'unconfirmed' ? 'The bar after the break closed back at or inside the line: no follow-through.'
+        : 'Still forming. Act on the trigger, not the guess.';
+      items.push({ k: 'conf', ok: ok ? true : sig.status === 'failed' || sig.status === 'unconfirmed' ? false : null, label: 'Breakout confirmed', why });
     }
     let pts = 0, tot = 0;
     for (const it of items) { tot += 1; pts += it.ok === true ? 1 : it.ok === null ? 0.5 : 0; }
     return { items, score: tot ? Math.round(pts / tot * 100) : null };
   }
+
+  /* ---------------- breakout facts ----------------
+     swing   : the opposite extreme of the base (lowest low before a bullish break)
+     height  : level − swing, the size of the move being broken out of
+     targets : Fibonacci extensions of that swing (1.272, 1.618, 2.0, 2.618)
+               and the pattern's own measured move
+     confirm : what has happened since the break (volume, follow-through,
+               retest, back inside)                                          */
+  P.CONFIRM_RULE = 'follow'; // set from the backtest (see BACKTEST.md)
+  P.breakInfo = function (bars, ind, s) {
+    if (s.level == null || !s.plan || (s.bias !== 'bull' && s.bias !== 'bear') || /^failed/.test(s.key)) return;
+    const n = bars.length, dir = s.bias === 'bull' ? 1 : -1;
+    const bI = s.breakI != null && s.breakI >= 0 ? s.breakI : n - 1;
+    const from = Math.max(0, Math.min(s.start, bI) - 5, bI - 80);
+    const swing = dir > 0 ? minOf(bars, from, bI, 'l')[0] : maxOf(bars, from, bI, 'h')[0];
+    const a = ind.atr[bI];
+    const height = Math.abs(s.level - swing);
+    s.swing = swing; s.height = height;
+    if (height >= 1.0 * a) {
+      const T = (k, f, label) => ({ k, label, price: s.level + dir * f * height });
+      const list = [T('fib1272', 0.272, 'Fib 1.272'), T('fib1618', 0.618, 'Fib 1.618'), T('fib2', 1.0, 'Fib 2.0 (equal move)'), T('fib2618', 1.618, 'Fib 2.618')];
+      list.push({ k: 'mm', label: 'Measured move', price: s.plan.target });
+      s.targets = list.filter(t => dir * (t.price - s.plan.entry) > 0).sort((x, y) => dir * (x.price - y.price));
+      // Fibonacci retracement of the breakout leg: where pullbacks tend to find buyers/sellers
+      if (s.breakI != null && s.breakI >= 0) {
+        const ext = dir > 0 ? maxOf(bars, s.breakI, n - 1, 'h')[0] : minOf(bars, s.breakI, n - 1, 'l')[0];
+        const leg = Math.abs(ext - swing);
+        s.retrace = [0.382, 0.5, 0.618].map(f => ({ f, price: ext - dir * f * leg }));
+      }
+    }
+    if (s.breakI == null || s.breakI < 0) { s.confirm = { broke: false }; return; }
+    const k = s.breakI, t = 0.15 * a;
+    const vr = volRatio(bars, k);
+    const c = { broke: true, vol: vr == null ? null : vr >= 1.5, volRatio: vr, follow: null, retest: false, backInside: -1 };
+    if (k + 1 < n) c.follow = dir * (bars[k + 1].c - s.level) > 0;
+    for (let j = k + 1; j < n; j++) {
+      if (dir * (bars[j].c - s.level) < -t) { c.backInside = j; break; }
+      if (j <= k + 10 && (dir > 0 ? bars[j].l <= s.level + 0.5 * a : bars[j].h >= s.level - 0.5 * a) && dir * (bars[j].c - s.level) > 0) c.retest = true;
+    }
+    s.confirm = c;
+    P.applyConfirmation(s, n);
+  };
+  // Turns the confirmation facts into a status under the chosen rule.
+  P.applyConfirmation = function (s, n) {
+    const c = s.confirm; if (!c || !c.broke) return;
+    const rule = P.CONFIRM_RULE;
+    const need = [];
+    if ((rule === 'vol' || rule === 'volfollow') && c.vol === false) need.push('volume');
+    if (rule === 'follow' || rule === 'volfollow') { if (c.follow === null) need.push('follow'); else if (c.follow === false) need.push('follow-failed'); }
+    if (rule === 'retest' && !c.retest) need.push('retest');
+    s.confirmNeeds = need;
+    if (c.backInside !== -1 && (need.length || c.backInside <= s.breakI + 5)) s.status = 'failed';
+    else if (need.includes('follow-failed') || (need.includes('volume'))) s.status = 'unconfirmed';
+    else if (need.length) s.status = 'potential';
+    else s.status = 'confirmed';
+  };
 
   /* ---------------- main ---------------- */
   P.analyze = function (bars) {
@@ -693,7 +755,7 @@
         const stop = isSup ? Math.max(maxOf(bars, tl.brk - 3, n - 1, 'h')[0], lv) + 0.25 * a : Math.min(minOf(bars, tl.brk - 3, n - 1, 'l')[0], lv) - 0.25 * a;
         const opp = levels.filter(l => isSup ? l.price < c - a : l.price > c + a).sort((x, y) => isSup ? y.price - x.price : x.price - y.price)[0];
         sigs.push({
-          key: 'trendline_break', kind: 'trendline', bias: isSup ? 'bear' : 'bull', status: 'confirmed', i: tl.brk, start: tl.A.i, breakI: tl.brk,
+          key: 'trendline_break', kind: 'trendline', bias: isSup ? 'bear' : 'bull', status: 'confirmed', i: tl.brk, start: tl.A.i, breakI: tl.brk, level: tl.at(tl.brk),
           detail: 'A ' + (isSup ? 'rising support' : 'falling resistance') + ' line with ' + tl.touches + ' touches since ' + bars[tl.A.i].t + ' was broken by a close on ' + bars[tl.brk].t + '. The trend that line described has lost its rhythm.',
           volRatio: volRatio(bars, tl.brk),
           plan: plan(entry, stop, opp ? opp.price : (isSup ? entry - 3 * a : entry + 3 * a)),
@@ -757,6 +819,8 @@
       const a = atr[Math.min(n - 1, s.i)], dir = p.target > p.entry ? 1 : -1;
       if (dir * (p.entry - p.stop) < 0.75 * a) { const np = plan(p.entry, p.entry - dir * 0.75 * a, p.target); np.widened = true; s.plan = np; }
     }
+    // breakout facts: swing size, target ladder (Fibonacci + measured move), confirmation
+    for (const s of sigs) P.breakInfo(bars, ind, s);
     // score, then sort: fresh & high quality first
     for (const s of sigs) {
       const cl = checklist(s, bars, ind, levels, tls);
@@ -767,7 +831,7 @@
     }
     const kindW = { chart: 3, breakout: 3, trendline: 2, candle: 1 };
     sigs.sort((a, b) => {
-      const r = s => (s.status === 'failed' && s.kind !== 'breakout' ? -20 : 0) + (s.status === 'forming' ? -3 : 0) + kindW[s.kind] * 6 - s.age * (s.kind === 'candle' ? 0.8 : 0.3) + (s.score || 0) / 10 + (s.plan && s.plan.rr != null && s.plan.rr < 1 ? -6 : 0);
+      const r = s => (s.status === 'failed' && s.kind !== 'breakout' ? -20 : 0) + (s.status === 'forming' ? -3 : 0) + (s.status === 'unconfirmed' ? -8 : 0) + kindW[s.kind] * 6 - s.age * (s.kind === 'candle' ? 0.8 : 0.3) + (s.score || 0) / 10 + (s.plan && s.plan.rr != null && s.plan.rr < 1 ? -6 : 0);
       const ra = r(a), rb = r(b);
       return rb - ra;
     });

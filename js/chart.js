@@ -122,7 +122,7 @@
       let lo = Infinity, hi = -Infinity;
       for (let i = i0; i <= i1; i++) { lo = Math.min(lo, bars[i].l); hi = Math.max(hi, bars[i].h); }
       if (this.sel && this.sel.plan) {
-        for (const v of [this.sel.plan.stop, this.sel.plan.target, this.sel.plan.entry]) {
+        for (const v of [this.sel.plan.stop, this.sel.plan.target, this.sel.plan.entry].concat((this.sel.targets || []).filter(t => t.k !== 'fib2618').map(t => t.price))) {
           if (v > 0 && v < hi * 1.35 && v > lo * 0.65) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
         }
       }
@@ -167,9 +167,32 @@
         ctx.fillStyle = C.up; ctx.fillRect(xs, Math.min(Y(pl.entry), Y(pl.target)), xe - xs, Math.abs(Y(pl.target) - Y(pl.entry)));
         ctx.fillStyle = C.down; ctx.fillRect(xs, Math.min(Y(pl.entry), Y(pl.stop)), xe - xs, Math.abs(Y(pl.stop) - Y(pl.entry)));
         ctx.globalAlpha = 1;
-        hl(ctx, xs, xe, Y(pl.target), C.up, [5, 4], 'Target ' + fmtP(pl.target), long ? 'above' : 'below');
+        hl(ctx, xs, xe, Y(pl.target), C.up, [5, 4], (sel.targets ? 'Measured move ' : 'Target ') + fmtP(pl.target), long ? 'above' : 'below');
         hl(ctx, xs, xe, Y(pl.entry), C.fg, [2, 3], 'Entry ' + fmtP(pl.entry), long ? 'above' : 'below');
         hl(ctx, xs, xe, Y(pl.stop), C.down, [5, 4], 'Stop ' + fmtP(pl.stop), long ? 'below' : 'above');
+      }
+
+      // breakout level and take-profit ladder of the selected setup
+      if (sel && sel.level != null) {
+        const xs = X(Math.max(sel.start, i0));
+        ctx.strokeStyle = C.accent2; ctx.lineWidth = 1.4; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(xs, Y(sel.level)); ctx.lineTo(left + w, Y(sel.level)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = C.accent2; ctx.textAlign = 'left'; ctx.fillText('Breakout level ' + fmtP(sel.level), xs + 4, Y(sel.level) + 12);
+        if (sel.targets && sel.plan) {
+          const x0 = X(Math.max(sel.i, i0));
+          const used = [Y(sel.plan.target) - 8, Y(sel.plan.entry) - 8, Y(sel.plan.target) + 9, Y(sel.plan.entry) + 9];
+          for (const t of sel.targets) {
+            if (t.k === 'mm') continue; // the plan's target line already marks it
+            const y = Y(t.price);
+            const free = !used.some(u => Math.abs(u - (y - 6)) < 13);
+            ctx.strokeStyle = C.up; ctx.globalAlpha = 0.55; ctx.setLineDash([1, 4]); ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(left + w, y); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+            if (!free) continue;
+            used.push(y - 6);
+            ctx.fillStyle = C.text; ctx.textAlign = 'right';
+            ctx.fillText(t.label.replace(' (equal move)', '') + ' ' + fmtP(t.price) + (t.hit != null ? ' · ' + Math.round(t.hit * 100) + '%' : ''), left + w - 4, y - 6);
+          }
+        }
       }
 
       // S/R levels

@@ -29,7 +29,7 @@
       return s.i === last ? 'trigger' : null;
     }
     if (s.kind === 'chart') {
-      if (s.status === 'confirmed' && s.breakI === last) return 'market';
+      if (s.breakI === last && s.status !== 'failed') return 'market'; // break bar; the study applies each confirmation rule
       if (s.status === 'forming' && (s.key === 'channel_up' || s.key === 'channel_down')) return 'trigger';
     }
     return null;
@@ -53,16 +53,20 @@
     const risk = dir * (entry - stop);
     if (!(risk > 0) || dir * (target - entry) <= 0) return null; // gapped through stop or target
     let hit1R = false;
+    // pct = % return on the position; mfe = best excursion in R before the exit
+    let mfe = 0;
+    const fin = (r, outcome, j) => ({ r, pct: r * risk / entry * 100, outcome, held: j - k + 1, hit1R, entryI: k, exitI: j, entry, mfe });
     for (let j = k; j < bars.length && j < k + hold; j++) {
       const b = bars[j];
       const lo = dir > 0 ? b.l : -b.h, hi = dir > 0 ? b.h : -b.l, op = dir * b.o;
-      if (lo <= dir * stop) { const ex = j === k ? dir * stop : Math.min(op, dir * stop); return { r: (ex - dir * entry) / risk, outcome: 'stop', held: j - k + 1, hit1R, entryI: k, exitI: j, entry }; }
+      if (lo <= dir * stop) { const ex = j === k ? dir * stop : Math.min(op, dir * stop); return fin((ex - dir * entry) / risk, 'stop', j); }
       if (hi >= dir * entry + risk) hit1R = true;
-      if (hi >= dir * target) { const ex = j === k ? dir * target : Math.max(op, dir * target); return { r: (ex - dir * entry) / risk, outcome: 'target', held: j - k + 1, hit1R, entryI: k, exitI: j, entry }; }
+      mfe = Math.max(mfe, (hi - dir * entry) / risk);
+      if (hi >= dir * target) { const ex = j === k ? dir * target : Math.max(op, dir * target); return fin((ex - dir * entry) / risk, 'target', j); }
     }
     const lastJ = Math.min(bars.length - 1, k + hold - 1);
     if (lastJ < k) return null;
-    return { r: (dir * bars[lastJ].c - dir * entry) / risk, outcome: lastJ === bars.length - 1 && k + hold - 1 > lastJ ? 'open' : 'time', held: lastJ - k + 1, hit1R, entryI: k, exitI: lastJ, entry };
+    return fin((dir * bars[lastJ].c - dir * entry) / risk, lastJ === bars.length - 1 && k + hold - 1 > lastJ ? 'open' : 'time', lastJ);
   };
 
   B.control = function (bars, atr, rng, dir, ev, hold, n) {
@@ -117,10 +121,65 @@
         };
         if (res) Object.assign(ev, res);
         if (ev.traded) ev.ctrl = B.control(bars, state.atr, state.rng, dir, ev, cfg.hold, state.ctrlN || 5);
+        if (mode === 'market' && s.level != null && !/^failed/.test(s.key) && state.study !== false) B.breakStudy(bars, t, s, dir, cfg, state, ev, a);
         state.events.push(ev);
       }
     }
     return state;
+  };
+
+  /* Confirmation rules and take-profit targets, studied on every break event.
+     Each rule delays (or cancels) the entry; the trade then uses the same stop
+     and measured-move target. */
+  B.RULES = ['close', 'vol', 'follow', 'volfollow', 'retest'];
+  B.RULE_LABEL = { close: 'Close beyond the line', vol: '+ volume ≥ 1.5×', follow: '+ second close beyond', volfollow: '+ volume and second close', retest: 'Pullback retest holds' };
+  B.confirmBar = function (bars, t, level, dir, a, rule, volOK) {
+    const beyond = j => dir * (bars[j].c - level) > 0;
+    if (rule === 'close') return t;
+    if (rule === 'vol') return volOK ? t : -1;
+    if (rule === 'follow') return t + 1 < bars.length && beyond(t + 1) ? t + 1 : -1;
+    if (rule === 'volfollow') return volOK && t + 1 < bars.length && beyond(t + 1) ? t + 1 : -1;
+    if (rule === 'retest') {
+      for (let k = t + 1; k < bars.length && k <= t + 10; k++) {
+        if (dir * (bars[k].c - level) < -0.15 * a) return -1;
+        if ((dir > 0 ? bars[k].l <= level + 0.5 * a : bars[k].h >= level - 0.5 * a) && beyond(k)) return k;
+      }
+      return -1;
+    }
+    return -1;
+  };
+  B.breakStudy = function (bars, t, s, dir, cfg, state, ev, a) {
+    let vs = 0, vc = 0;
+    for (let j = Math.max(0, t - 20); j < t; j++) { vs += bars[j].v || 0; vc++; }
+    const vr = vs > 0 ? (bars[t].v || 0) / (vs / vc) : null;
+    const volOK = vr != null && vr >= 1.5;
+    // false break: closes back inside within 5 bars of the break
+    let fb = false;
+    for (let j = t + 1; j < bars.length && j <= t + 5; j++) if (dir * (bars[j].c - s.level) < -0.15 * a) { fb = true; break; }
+    ev.fb = fb; ev.hasVol = vr != null;
+    ev.v = {};
+    for (const rule of B.RULES) {
+      const tv = B.confirmBar(bars, t, s.level, dir, a, rule, volOK);
+      if (tv < 0) { ev.v[rule] = null; continue; }
+      const res = B.simulate(bars, tv, 'market', dir, s.plan, cfg.hold);
+      if (!res || res.outcome === 'open') { ev.v[rule] = null; continue; }
+      const c = B.control(bars, state.atr, state.rng, dir, ev, cfg.hold, 3);
+      ev.v[rule] = { r: res.r, pct: res.pct, out: res.outcome, c: c.length ? c.reduce((x, y) => x + y, 0) / c.length : null, fb: (() => { for (let j = tv + 1; j < bars.length && j <= tv + 5; j++) if (dir * (bars[j].c - s.level) < -0.15 * a) return true; return false; })() };
+    }
+    // targets, entered under the 'close' and 'follow' rules
+    if (s.targets && s.targets.length) {
+      ev.tg = {};
+      for (const rule of ['close', 'follow']) {
+        const tv = B.confirmBar(bars, t, s.level, dir, a, rule, volOK);
+        if (tv < 0) continue;
+        const o = {};
+        for (const tg of s.targets) {
+          const res = B.simulate(bars, tv, 'market', dir, { entry: s.plan.entry, stop: s.plan.stop, target: tg.price }, cfg.hold);
+          if (res && res.outcome !== 'open') o[tg.k] = { r: res.r, hit: res.outcome === 'target', pct: res.pct };
+        }
+        ev.tg[rule] = o;
+      }
+    }
   };
 
   B.stats = function (list) {
@@ -137,6 +196,7 @@
       n, win: rs.filter(r => r > 0).length / n, avgR: avg, ci: 1.96 * sd / Math.sqrt(n), pf: gl > 0 ? gp / gl : null,
       tgt: L.filter(e => e.outcome === 'target').length / n, stop: L.filter(e => e.outcome === 'stop').length / n,
       held: L.reduce((a, e) => a + e.held, 0) / n, rr: L.reduce((a, e) => a + e.rr, 0) / n,
+      pct: L.reduce((a, e) => a + (e.pct || 0), 0) / n,
       ctrlAvgR: cavg, edge: cavg == null ? null : avg - cavg,
     };
   };

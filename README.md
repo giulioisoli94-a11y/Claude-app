@@ -30,6 +30,10 @@ Each setup comes with:
 
 **Track record**: how well the scanner recognizes patterns, and how every setup actually performed in a walk-forward backtest on ~190 real S&P 500 price histories (daily, weekly, monthly), compared with random entries. See [BACKTEST.md](BACKTEST.md).
 
+**Live data**: opened in claude.ai with the Firecrawl connector, the app loads live Yahoo Finance prices for any Nasdaq/NYSE stock and the major indexes (S&P 500, Nasdaq-100, Nasdaq Composite, Dow, Russell 2000, plus SPY/QQQ/DIA/IWM), and **Market scan** checks the whole watchlist at once. Elsewhere, load a CSV.
+
+**Breakout confirmation and targets**: a break is *Potential* until a second close confirms it; every setup gets a target ladder (Fibonacci 1.272/1.618/2.0/2.618 and the measured move) with backtested hit rates.
+
 **Timeframes**: Daily, Weekly and Monthly. **Backtest this chart** replays the scanner bar by bar over any loaded stock.
 
 ## How detection works
@@ -45,6 +49,8 @@ js/indicators.js    SMA, EMA, RSI, ATR
 js/data.js          CSV parser, weekly resampling, synthetic markets, pattern templates
 js/patterns.js      detection engine → signals with plan + checklist
 js/backtest.js      walk-forward backtest core (app + offline study)
+js/live.js          live prices via the Firecrawl connector
+icons/              app icon (SVG source + PNG sizes), manifest.webmanifest
 js/trackrecord.js   generated backtest results shown in the app
 js/chart.js         canvas candlestick chart (zoom, pan, overlays)
 js/learn.js         lesson content

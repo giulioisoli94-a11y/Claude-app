@@ -77,14 +77,25 @@
     diagram: { tpl: 'double_top' },
   };
 
+  L.targets = {
+    title: 'Measured moves & Fibonacci targets', cat: 'Foundations', bias: 'neutral',
+    short: 'Two ways to set a take-profit before you enter: project the pattern\'s own height (the measured move), or extend the breakout swing by Fibonacci ratios (1.272, 1.618, 2.0, 2.618).',
+    why: 'A breakout releases the energy stored in the range or pattern, so moves often travel a distance related to the size of what was broken. Fibonacci extensions are widely watched, so many traders take profits there, which makes them self-fulfilling to a degree. Neither is a law; both give you a target fixed in advance, which is what matters for reward-to-risk.',
+    spot: ['Measured move: pattern height (e.g. head to neckline, flag pole, triangle width) added to the breakout point.', 'Fibonacci extension: take the swing from the base\'s low to the breakout level; 1.272 adds 27% of it beyond the level, 1.618 adds 62%, 2.0 a full equal move, 2.618 a 162% move.', 'Fibonacci retracement (38.2%, 50%, 61.8%) of the breakout leg marks where pullbacks often find buyers: a zone for adding or re-entering.'],
+    confirm: ['Targets that line up with an old support or resistance level are more likely to stall price.', 'Check the hit rate the app shows next to each target: in the backtest the nearest (Fib 1.272) was reached about two times in three, the 2.618 about one in five.'],
+    trade: ['Scale out: take part at the nearest target and move the stop to break-even, let the rest run to the measured move.', 'Only take trades where the first realistic target pays at least as much as you risk.', 'Re-measure if the pattern changes: targets come from the pattern, not from hope.'],
+    mistakes: ['Holding for the 2.618 extension on every trade. It is rarely reached.', 'Using a far target to make a poor reward-to-risk look good.'],
+    diagram: { tpl: 'bull_flag' },
+  };
+
   /* ---------------- breakouts ---------------- */
   L.breakout = {
     title: 'Breakout', cat: 'Breakouts', bias: 'bull',
     short: 'A close above a resistance level that has capped price several times.',
     why: 'Sellers at that level have been absorbed. Short sellers with stops above it are forced to buy, and breakout traders join in, so the move can accelerate.',
     spot: ['Resistance tested at least twice.', 'A decisive close above it (not just a wick), ideally in the top third of the bar.'],
-    confirm: ['Volume at least 1.5× average.', 'Price holds above the level over the next few bars.', 'A pullback to the old resistance that holds as support (the retest) is the textbook second entry.'],
-    trade: ['Entry: on the close above the level, or on the retest.', 'Stop: about 1 ATR below the broken level.', 'Target: the next resistance, or the height of the prior range added to the breakout.'],
+    confirm: ['A second close above the level. In our backtest almost half of all breaks closed back inside within five bars; waiting for the second close filtered out a good share of them, which is why the app calls a break "potential" until then.', 'Volume at least 1.5× average on the break: the strongest confirmation.', 'A pullback to the old resistance that holds as support (the retest) is the textbook second entry.'],
+    trade: ['Entry: after the second close above the level, or on the retest.', 'Stop: about 1 ATR below the broken level.', 'Target: the next resistance, or the height of the prior range added to the breakout.'],
     mistakes: ['Buying an intraday poke that closes back inside.', 'Chasing a breakout that is already 3+ ATR above the level.'],
     diagram: { tpl: 'asc_triangle' },
   };
@@ -93,7 +104,7 @@
     short: 'A close below a support level that has held several times.',
     why: 'Buyers who defended the level are now underwater; their stop-losses and exits add supply and push price lower.',
     spot: ['Support tested at least twice.', 'A decisive close below it, ideally near the bar\'s low.'],
-    confirm: ['Heavy volume on the break.', 'A failed bounce back up to the level (old support acting as resistance).'],
+    confirm: ['A second close below the level; until then it is only a potential breakdown.', 'Heavy volume on the break.', 'A failed bounce back up to the level (old support acting as resistance).'],
     trade: ['Long traders: exit or avoid. Short traders: enter on the close or on the retest.', 'Stop: about 1 ATR above the broken level.', 'Target: the next support below.'],
     mistakes: ['Buying the dip into a broken level because it "used to be support".'],
     diagram: { tpl: 'desc_triangle' },
