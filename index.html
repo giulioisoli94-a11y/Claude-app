@@ -26,6 +26,7 @@
     <nav class="tabs" aria-label="Sections">
       <a href="#analyze" data-view="analyze">Analyze</a>
       <a href="#learn" data-view="learn">Learn</a>
+      <a href="#journal" data-view="journal">Journal</a>
       <a href="#trainer" data-view="trainer">Trainer</a>
       <a href="#track" data-view="track">Track record</a>
     </nav>
@@ -48,7 +49,19 @@
         <button type="button" role="radio" data-tf="M" aria-checked="false">Monthly</button>
       </div>
       <button class="btn" id="btBtn" type="button">Backtest this chart</button>
+      <button class="btn ghost" id="srcBtn" type="button" aria-expanded="false" aria-controls="srcPanel">Data source</button>
       <span class="err" id="csvErr" hidden></span>
+    </div>
+    <div class="card src-panel" id="srcPanel" hidden>
+      <div class="src-in">
+        <div><h3>Live data source</h3><p class="muted" id="srcNow" style="margin:4px 0 0"></p></div>
+        <form id="keyForm" class="key-form" autocomplete="off">
+          <label for="keyIn">Twelve Data API key <span class="muted">(free at twelvedata.com · stored only on this device)</span></label>
+          <div class="key-row"><input id="keyIn" type="password" placeholder="Paste your key" autocomplete="off" spellcheck="false"><button class="btn primary" type="submit">Save</button><button class="btn ghost" type="button" id="keyDel">Remove</button></div>
+          <p class="muted" id="keyMsg" style="margin:0;font-size:12.5px"></p>
+        </form>
+        <p class="muted" style="margin:0;font-size:12.5px">Inside claude.ai the app uses your Firecrawl connector (Yahoo Finance, real indexes, 5 credits per symbol). Installed on its own, it uses Twelve Data: free plan, 8 requests a minute, 800 a day; indexes are followed through SPY, QQQ, ONEQ, DIA and IWM.</p>
+      </div>
     </div>
     <div class="live-status" id="liveStatus" hidden></div>
 
@@ -61,6 +74,7 @@
           <span class="tag" id="srcTag">Sample</span>
           <span class="muted" id="asof"></span>
         </div>
+        <div class="ctx" id="ctx"></div>
         <div class="chart-wrap"><canvas id="chart" aria-label="Price chart with detected patterns"></canvas></div>
         <div class="chart-foot">
           <div class="chips" id="layers"></div>
@@ -97,7 +111,7 @@
           <button class="btn" type="button" data-scan="stocks">Scan stocks</button>
         </div>
       </div>
-      <div id="scanOut" class="scan-out"><p class="muted" style="margin:0">Each symbol costs 5 Firecrawl credits the first time per 15 minutes; repeat scans use the cache.</p></div>
+      <div id="scanOut" class="scan-out"><p class="muted" style="margin:0">In claude.ai each symbol costs 5 Firecrawl credits per 15 minutes; on Twelve Data's free plan a full scan takes a few minutes (8 requests a minute). Repeat scans use the cache.</p></div>
     </div>
 
     <div class="card how">
@@ -111,6 +125,40 @@
       </ol>
       <p class="disclaimer">Patterns describe tendencies, not certainties. The scanner follows textbook rules measured in ATR (average true range); it will miss some patterns and see some that a human would reject. Use it to train your eye and to structure a plan, then make your own decision.</p>
     </div>
+  </section>
+
+  <!-- JOURNAL -->
+  <section class="view" id="view-journal" hidden>
+    <div class="card tr-hero">
+      <div class="row" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><div class="eyebrow" id="jStore">Trade journal</div><h2>Your trades, your numbers</h2></div>
+        <div class="toolbar"><button class="btn primary" type="button" id="jNew">New trade</button><button class="btn" type="button" id="jExport">Export CSV</button></div>
+      </div>
+      <p>Log the trades you actually take. The journal works out each result in R (multiples of what you risked) and sets it beside the backtest for the same setup, so you can see whether your execution adds to or takes from the pattern.</p>
+      <div class="tiles" id="jTiles"></div>
+    </div>
+    <form class="card j-form" id="jForm" hidden autocomplete="off">
+      <h3 id="jFormTitle">New trade</h3>
+      <div class="j-grid">
+        <label>Symbol<input id="jSym" required maxlength="20"></label>
+        <label>Direction<select id="jDir"><option value="1">Long</option><option value="-1">Short</option></select></label>
+        <label>Setup<select id="jSetup"></select></label>
+        <label>Timeframe<select id="jTf"><option value="D">Daily</option><option value="W">Weekly</option><option value="M">Monthly</option></select></label>
+        <label>Entry date<input id="jEntryDate" type="date" required></label>
+        <label>Entry price<input id="jEntry" type="number" step="any" min="0" required></label>
+        <label>Stop<input id="jStop" type="number" step="any" min="0" required></label>
+        <label>Target<input id="jTarget" type="number" step="any" min="0"></label>
+        <label>Shares<input id="jShares" type="number" step="any" min="0"></label>
+        <label>Exit date<input id="jExitDate" type="date"></label>
+        <label>Exit price<input id="jExit" type="number" step="any" min="0"></label>
+        <label class="wide">Notes<input id="jNotes" maxlength="300" placeholder="Why you took it, what you'd do differently"></label>
+      </div>
+      <p class="muted" id="jCalc" style="margin:0;font-size:12.5px"></p>
+      <div class="toolbar"><button class="btn primary" type="submit">Save trade</button><button class="btn ghost" type="button" id="jCancel">Cancel</button><span class="err" id="jErr" hidden></span></div>
+    </form>
+    <div class="card plot-card"><div class="plot-head"><h3>Open trades</h3></div><div class="tbl-wrap" id="jOpen"></div></div>
+    <div class="card plot-card"><div class="plot-head"><h3>Closed trades</h3></div><div class="tbl-wrap" id="jClosed"></div></div>
+    <div class="card plot-card"><div class="plot-head"><h3>You vs the backtest</h3><span class="muted" style="font-size:12px">average R per closed trade, same setup and timeframe</span></div><div class="tbl-wrap" id="jVs"></div></div>
   </section>
 
   <!-- TRACK RECORD -->
@@ -161,6 +209,8 @@
 <script src="js/learn.js"></script>
 <script src="js/backtest.js"></script>
 <script src="js/live.js"></script>
+<script src="js/context.js"></script>
+<script src="js/journal.js"></script>
 <script src="js/trackrecord.js"></script>
 <script src="js/chart.js"></script>
 <script src="js/app.js"></script>

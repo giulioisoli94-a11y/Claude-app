@@ -98,9 +98,25 @@ For each confirmed break: swing = from the base's extreme to the breakout level.
 
 Average R is about the same whichever target you choose (nearer targets hit more often but pay less). The app shows each target's price, gain, reward multiple and hit rate, plus the Fibonacci retracement pullback zone (38.2 / 50 / 61.8%).
 
+## 5. Trend, market regime and relative strength
+
+Every daily and weekly trade was tagged, using only data available that day, with: the weekly trend (price vs a rising/falling 30-week average), the market regime (an equal-weighted index of the test stocks vs its 200-day average) and relative strength (6-month return ranked across the universe).
+
+| Daily longs | Trades | Edge vs random | 2000–12 | 2016–20 |
+|---|---|---|---|---|
+| All setups | 62,093 | −0.02R | −0.03 | −0.00 |
+| Weekly trend agrees | 31,463 | −0.05R | −0.05 | −0.07 |
+| Market regime agrees | 46,595 | −0.01R | −0.02 | −0.01 |
+| Top 30% relative strength | 18,527 | −0.09R | −0.09 | −0.07 |
+| All three agree | 13,061 | −0.06R | −0.07 | −0.05 |
+
+None of the three improved results over random entries in the same direction, on daily or weekly charts, in either period; aligned trades did slightly worse. Over 1–8 week swings with ATR-based stops these large stocks tended to give back strength. The app shows the three as context only.
+
+Stops are kept between 0.75 and 4 ATR from entry (tighter sits inside normal noise; wider rests on old, unrelated swings).
+
 ## Live data
 
-In claude.ai the app loads daily, weekly and monthly bars for any Yahoo Finance symbol (stocks, ETFs, ^GSPC, ^NDX, ^IXIC, ^DJI, ^RUT) through the viewer's Firecrawl connector, 5 credits per symbol and timeframe, cached 15 minutes. "Backtest this chart" then replays the scanner over that live history.
+In claude.ai the app loads daily, weekly and monthly bars for any Yahoo Finance symbol (stocks, ETFs, ^GSPC, ^NDX, ^IXIC, ^DJI, ^RUT) through the viewer's Firecrawl connector, 5 credits per symbol and timeframe, cached 15 minutes. Installed on its own, it uses Twelve Data with the user's free key (indexes through SPY, QQQ, ONEQ, DIA, IWM; 8 requests a minute). "Backtest this chart" then replays the scanner over that live history.
 
 ## Limits
 

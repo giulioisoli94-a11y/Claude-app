@@ -4,6 +4,16 @@ A browser app that reads daily (or weekly) stock charts, finds the setups swing 
 
 Open `index.html` in a browser. Nothing to install, no build step, no API keys; your data never leaves the browser.
 
+## Install it on your phone (App Library)
+
+The app is an installable web app (PWA): its own icon, full screen, works offline.
+
+1. One-time GitHub setup: make the repository public (GitHub Pages on a private repository needs a paid plan), then **Settings → Pages → Source: GitHub Actions**, and merge this branch into `main`. The workflow in `.github/workflows/pages.yml` publishes the app to `https://<your-user>.github.io/<repo>/`.
+2. On iPhone, open that address in **Safari** → **Share** → **Add to Home Screen**. It appears on the Home Screen and in the App Library with the Swing Pattern Lab icon.
+3. In the app, open **Data source** and paste your free Twelve Data key (twelvedata.com). It is stored only on that device.
+
+Inside claude.ai the same app uses your Firecrawl connector instead, with real index data (^GSPC, ^NDX, ^IXIC, ^DJI, ^RUT). On Twelve Data's free plan indexes are followed through SPY, QQQ, ONEQ, DIA and IWM, at 8 requests a minute and 800 a day.
+
 ## What it does
 
 **Analyze**: load a CSV export (Yahoo Finance → Historical Data, stooq.com, or your broker) or use the synthetic sample markets. The scanner finds:
@@ -34,6 +44,12 @@ Each setup comes with:
 
 **Breakout confirmation and targets**: a break is *Potential* until a second close confirms it; every setup gets a target ladder (Fibonacci 1.272/1.618/2.0/2.618 and the measured move) with backtested hit rates.
 
+**Context**: higher-timeframe trend, market regime (S&P 500 vs its 200-day average) and strength against the S&P 500, shown under the chart and in the scan. The backtest found none of them improved results, so they are context, not filters.
+
+**Journal**: log the trades you take (one tap from any setup), close them, and compare your average R per setup with the backtest. Saved privately to your claude.ai account inside claude.ai, on the device in the installed app; exports to CSV.
+
+**Morning scan**: `node scan/daily.js` scans the indexes (via ETFs) and 18 leaders on Twelve Data and prints confirmed breakouts, potential breakouts awaiting their second close, and patterns near their line. A scheduled task runs it each weekday before the US open.
+
 **Timeframes**: Daily, Weekly and Monthly. **Backtest this chart** replays the scanner bar by bar over any loaded stock.
 
 ## How detection works
@@ -49,7 +65,11 @@ js/indicators.js    SMA, EMA, RSI, ATR
 js/data.js          CSV parser, weekly resampling, synthetic markets, pattern templates
 js/patterns.js      detection engine → signals with plan + checklist
 js/backtest.js      walk-forward backtest core (app + offline study)
-js/live.js          live prices via the Firecrawl connector
+js/live.js          live prices: Firecrawl connector (claude.ai) or Twelve Data key (installed app)
+js/context.js       higher-timeframe trend, market regime, relative strength
+js/journal.js       trade journal storage (claude.ai account or device)
+sw.js               offline cache for the installed app
+scan/daily.js       daily market scan (Twelve Data)
 icons/              app icon (SVG source + PNG sizes), manifest.webmanifest
 js/trackrecord.js   generated backtest results shown in the app
 js/chart.js         canvas candlestick chart (zoom, pan, overlays)

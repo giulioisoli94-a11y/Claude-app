@@ -109,6 +109,8 @@ for (const tf of ['D', 'W', 'M']) {
     }
   }
 }
+const ctxFile = path.join(__dirname, 'out', 'context.json');
+if (fs.existsSync(ctxFile)) out.context = JSON.parse(fs.readFileSync(ctxFile, 'utf8'));
 const accFile = path.join(__dirname, 'out', 'accuracy.json');
 if (fs.existsSync(accFile)) {
   const acc = JSON.parse(fs.readFileSync(accFile, 'utf8'));

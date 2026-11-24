@@ -11,7 +11,7 @@
   };
   const BIAS_WORD = { bull: 'Bullish', bear: 'Bearish', neutral: 'Neutral' };
   const STATUS_WORD = { forming: 'Forming', confirmed: 'Confirmed', failed: 'Failed', fresh: 'Just broke', holding: 'Holding', potential: 'Potential breakout · awaiting confirmation', unconfirmed: 'No follow-through' };
-  const Live = window.SPLive;
+  const Live = window.SPLive, CX = window.SPC;
   const title = key => (LIB.entries[key] ? LIB.entries[key].title : key);
 
   /* ================= ANALYZE ================= */
@@ -32,11 +32,13 @@
   }
   async function loadLive(sym, opts) {
     opts = opts || {};
-    sym = String(sym).trim().toUpperCase();
+    sym = String(sym || '').trim().toUpperCase();
+    if (!sym) return;
     const req = ++state.liveReq;
     const label = (Live.WATCH.indexes.concat(Live.WATCH.stocks).find(x => x[0] === sym) || [sym, ''])[1];
     liveMsg(`<span class="spin" aria-hidden="true"></span> Loading ${esc(sym)} · ${TFW[state.tf].toLowerCase()} bars from Yahoo Finance via Firecrawl…`);
-    const cached = Live.cached(sym, state.tf);
+    const cached = Live.cached((await Live.resolve(sym)).sym, state.tf);
+    Live.onWait = ms => { if (req === state.liveReq) liveMsg(`<span class="spin" aria-hidden="true"></span> Waiting ${Math.ceil(ms / 1000)} s for the Twelve Data free-plan limit (8 requests a minute)…`); };
     if (cached && !opts.refresh) showLive(sym, cached, true); // show the last copy at once
     try {
       const d = await Live.load(sym, state.tf, { refresh: opts.refresh });
@@ -45,8 +47,8 @@
     } catch (e) {
       if (req !== state.liveReq) return;
       const x = Live.explain(e);
-      liveMsg(`<b>${esc(sym)}:</b> ${esc(x.msg)}${cached ? ' Showing the copy saved ' + esc(new Date(cached.storedAt).toLocaleString()) + '.' : ''} ${x.action ? `<button class="btn ghost" type="button" id="liveRetry">${x.action === 'allow' ? 'Allow and load' : 'Try again'}</button>` : ''}`, 'warn');
-      const b = $('#liveRetry'); if (b) b.addEventListener('click', () => loadLive(sym));
+      liveMsg(`<b>${esc(sym)}:</b> ${esc(x.msg)}${cached ? ' Showing the copy saved ' + esc(new Date(cached.storedAt).toLocaleString()) + '.' : ''} ${x.action ? `<button class="btn ghost" type="button" id="liveRetry">${x.action === 'allow' ? 'Allow and load' : x.action === 'settings' ? 'Open data source' : 'Try again'}</button>` : ''}`, 'warn');
+      const b = $('#liveRetry'); if (b) b.addEventListener('click', () => (x.action === 'settings' ? openSrc(true) : loadLive(sym)));
       if (!cached && !state.an) loadSample(D.samples[0].id);
     }
     void label;
@@ -56,9 +58,68 @@
     state.ticker = sym; state.name = d.name;
     run();
     const when = new Date(d.storedAt);
-    liveMsg(`<span class="dot-live${fromStore ? ' old' : ''}" aria-hidden="true"></span> ${fromStore ? 'Saved copy' : 'Live'} · ${esc(d.name)} · Yahoo Finance via Firecrawl · data as of ${esc(when.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}${d.cached ? ' (cached)' : ''} <button class="btn ghost" type="button" id="liveRefresh">Refresh</button>`);
+    liveMsg(`<span class="dot-live${fromStore ? ' old' : ''}" aria-hidden="true"></span> ${fromStore ? 'Saved copy' : 'Live'} · ${esc(d.name)} · ${esc(d.source || 'Live data')} · data as of ${esc(when.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }))}${d.cached ? ' (cached)' : ''} <button class="btn ghost" type="button" id="liveRefresh">Refresh</button>`);
     const b = $('#liveRefresh'); if (b) b.addEventListener('click', () => loadLive(sym, { refresh: true }));
   }
+  /* ---------- data source panel ---------- */
+  const VIA = { '^GSPC': 'SPY', '^NDX': 'QQQ', '^IXIC': 'ONEQ', '^DJI': 'DIA', '^RUT': 'IWM' };
+  async function paintSrc() {
+    const srcK = await Live.source();
+    $('#srcNow').textContent = srcK === 'firecrawl' ? 'Now using: Yahoo Finance through your Firecrawl connector (claude.ai).'
+      : srcK === 'twelvedata' ? 'Now using: Twelve Data with your API key.' : 'No live source yet. Add a Twelve Data key, or open the app in claude.ai.';
+    const k = Live.getKey();
+    $('#keyIn').value = ''; $('#keyIn').placeholder = k ? 'Key saved (ending ' + k.slice(-4) + ')' : 'Paste your key';
+    $('#keyForm').hidden = srcK === 'firecrawl' && !k;
+    for (const o of src.querySelectorAll('option[value^="L:^"]')) {
+      if (!o.dataset.base) o.dataset.base = o.textContent;
+      const via = VIA[o.value.slice(2)];
+      o.textContent = o.dataset.base + (srcK === 'twelvedata' && via ? ' (via ' + via + ')' : '');
+    }
+  }
+  function openSrc(force) {
+    const p = $('#srcPanel'); const show = force || p.hidden;
+    p.hidden = !show; $('#srcBtn').setAttribute('aria-expanded', String(show));
+    if (show) { paintSrc(); p.scrollIntoView({ block: 'nearest' }); }
+  }
+  $('#srcBtn').addEventListener('click', () => openSrc(false));
+  $('#keyForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const k = $('#keyIn').value.trim(); if (!k) return;
+    Live.setKey(k); $('#keyMsg').textContent = 'Saved. Testing with SPY…';
+    try { const d = await Live.load('SPY', 'D', { refresh: true }); $('#keyMsg').textContent = 'Works: SPY last close ' + fmt(d.bars[d.bars.length - 1].c) + ' on ' + d.bars[d.bars.length - 1].t + '.'; }
+    catch (err) { $('#keyMsg').textContent = Live.explain(err).msg; }
+    paintSrc();
+  });
+  $('#keyDel').addEventListener('click', () => { Live.setKey(''); $('#keyMsg').textContent = 'Key removed from this device.'; paintSrc(); });
+  paintSrc();
+
+  /* ---------- context strip: higher-timeframe trend, market regime, strength vs S&P 500 ---------- */
+  let ctxReq = 0;
+  async function renderContext() {
+    const box = $('#ctx'), req = ++ctxReq, tf = state.tf;
+    const ht = CX.higherTrend(state.bars, tf);
+    const chips = [];
+    const word = { up: 'Up', down: 'Down', mixed: 'Mixed' };
+    const unit = tf === 'D' ? 'days' : tf === 'W' ? 'weeks' : 'months';
+    if (ht.state) chips.push(`<span class="ctx-chip ${ht.state === 'up' ? 'up' : ht.state === 'down' ? 'down' : ''}" title="${esc(ht.label)}: price ${ht.state === 'up' ? 'above a rising' : ht.state === 'down' ? 'below a falling' : 'mixed against its'} average">${esc(ht.label.split(' (')[0])}: <b>${word[ht.state]}</b></span>`);
+    const paint = extra => { if (req === ctxReq) box.innerHTML = chips.concat(extra || []).join('') + '<span class="ctx-chip note" title="In our backtest, filtering trades by these did not improve results over random entries. See Track record.">context, not a signal</span>'; };
+    paint();
+    if (state.srcKind !== 'live') { paint([`<span class="ctx-chip">Market regime &amp; strength vs S&amp;P 500: <b>live data only</b></span>`]); return; }
+    try {
+      const isBench = state.liveSym === Live.BENCH || state.liveSym === 'SPY';
+      const bench = isBench ? state.live : await Live.load(Live.BENCH, tf);
+      if (req !== ctxReq) return;
+      const rg = CX.regime(bench.bars, tf), n = CX.RS_N[tf];
+      const extra = [];
+      if (rg.state) extra.push(`<span class="ctx-chip ${rg.state === 'healthy' ? 'up' : 'down'}" title="S&amp;P 500 vs its ${CX.REGIME_N[tf]}-bar average">Market: <b>S&amp;P ${rg.state === 'healthy' ? 'above' : 'below'} ${tf === 'D' ? '200-day' : tf === 'W' ? '40-week' : '10-month'}</b> (${rg.dist >= 0 ? '+' : ''}${rg.dist.toFixed(1)}%)</span>`);
+      if (!isBench) {
+        const rs = CX.relStrength(state.bars, bench.bars, n);
+        if (rs && rs.diff != null) extra.push(`<span class="ctx-chip ${rs.diff >= 0 ? 'up' : 'down'}" title="${esc(state.ticker)} ${rs.ret.toFixed(1)}% vs S&amp;P 500 ${rs.benchRet.toFixed(1)}% over ${n} ${unit}">vs S&amp;P 500 (${n} ${unit}): <b>${rs.diff >= 0 ? '+' : ''}${rs.diff.toFixed(1)}%</b></span>`);
+      }
+      paint(extra);
+    } catch (e) { paint([`<span class="ctx-chip">Market context unavailable</span>`]); }
+  }
+
   $('#tickerForm').addEventListener('submit', e => {
     e.preventDefault();
     const v = $('#tickerIn').value.trim();
@@ -89,7 +150,7 @@
     state.sel = null;
     chart.setData(state.bars, state.an);
     chart.setSelected(null);
-    renderHead(); renderRead(); renderSigs();
+    renderHead(); renderRead(); renderSigs(); renderContext();
     const first = state.an.signals.find(s => s.kind !== 'candle') || state.an.signals[0];
     select(first || null);
   }
@@ -231,6 +292,7 @@
           <label>Risk per trade (%)<input id="risk" type="number" min="0.1" max="10" step="0.1" value="${risk}"></label>
         </div>
         <div class="sizer-out" id="sizeOut"></div>
+        <div><button class="btn" type="button" id="logTrade">Log this trade in the journal</button></div>
       </div>` : ''}
       ${confirmHTML(s)}
       ${targetsHTML(s)}
@@ -261,6 +323,11 @@
       $('#acct').addEventListener('input', upd); $('#risk').addEventListener('input', upd); upd();
     }
     const ol = $('#openLib'); if (ol) ol.addEventListener('click', () => { openLesson(s.key); location.hash = 'learn'; });
+    const lt = $('#logTrade'); if (lt) lt.addEventListener('click', () => {
+      const per = Math.abs(p.entry - p.stop), a = parseFloat($('#acct').value) || 0, r = parseFloat($('#risk').value) || 0;
+      jOpenForm({ sym: state.ticker, dir: s.bias === 'bear' ? -1 : 1, setup: s.key, tf: state.tf, entryDate: new Date().toISOString().slice(0, 10), entry: +p.entry.toPrecision(6), stop: +p.stop.toPrecision(6), target: +p.target.toPrecision(6), shares: per > 0 ? Math.floor(a * r / 100 / per) : '' });
+      location.hash = 'journal';
+    });
   }
 
   /* Breakout confirmation: what has happened since the break, under the
@@ -373,17 +440,20 @@
     const b = e.target.closest('button[data-scan]'); if (!b || scanning) return;
     const list = Live.WATCH[b.dataset.scan];
     const out = $('#scanOut');
-    if (!(await Live.available())) { out.innerHTML = `<p class="muted" style="margin:0">${esc(Live.explain({ code: 'no_mcp' }).msg)}</p>`; return; }
+    if (!(await Live.available())) { out.innerHTML = `<p class="muted" style="margin:0">${esc(Live.explain({ code: 'no_source' }).msg)} <button class="btn ghost" type="button" id="scanSrc">Open data source</button></p>`; $('#scanSrc').addEventListener('click', () => openSrc(true)); return; }
     scanning = true; document.querySelectorAll('#scanCard [data-scan]').forEach(x => { x.disabled = true; });
     const tf = state.tf, rows = [];
+    let bench = null, waitNote = '';
+    Live.onWait = ms => { waitNote = ` Waiting ${Math.ceil(ms / 1000)} s for the free-plan limit…`; paint(false); };
     const paint = (done) => {
-      out.innerHTML = `<div class="tbl-wrap"><table class="data scan-t"><thead><tr><th>Symbol</th><th>Last</th><th>Change</th><th>Trend</th><th>Top setup</th><th>Status</th><th>Next target</th></tr></thead><tbody>
-        ${rows.map(r => r.err ? `<tr><td>${esc(r.sym)}</td><td colspan="6" class="muted" style="font-family:var(--font-ui)">${esc(r.err)}</td></tr>` :
-          `<tr data-sym="${esc(r.sym)}" class="clickable"><td><b>${esc(r.sym)}</b> <span class="muted" style="font-family:var(--font-ui)">${esc(r.name)}</span></td><td>${fmt(r.m.price)}</td><td class="${r.m.change >= 0 ? 'upc' : 'dnc'}">${r.m.change >= 0 ? '+' : ''}${r.m.change.toFixed(2)}%</td><td style="font-family:var(--font-ui)">${esc(r.m.trend)}</td>
+      out.innerHTML = `<div class="tbl-wrap"><table class="data scan-t"><thead><tr><th>Symbol</th><th>Last</th><th>Change</th><th>Trend</th><th title="Return minus the S&amp;P 500's over ${CX.RS_N[tf]} bars">vs S&amp;P</th><th>Top setup</th><th>Status</th><th>Next target</th></tr></thead><tbody>
+        ${rows.map(r => r.err ? `<tr><td>${esc(r.sym)}</td><td colspan="7" class="muted" style="font-family:var(--font-ui)">${esc(r.err)}</td></tr>` :
+          `<tr data-sym="${esc(r.sym)}" class="clickable"><td><b>${esc(r.sym)}</b> <span class="muted" style="font-family:var(--font-ui)">${esc(r.name)}</span></td><td>${fmt(r.m.price)}</td><td class="${r.m.change >= 0 ? 'upc' : 'dnc'}">${r.m.change >= 0 ? '+' : ''}${r.m.change.toFixed(2)}%</td><td style="font-family:var(--font-ui)">${esc(r.m.trend)}</td><td class="${r.rs == null ? '' : r.rs >= 0 ? 'upc' : 'dnc'}">${r.rs == null ? '–' : (r.rs >= 0 ? '+' : '') + r.rs.toFixed(1) + '%'}</td>
           <td style="font-family:var(--font-ui)">${r.s ? `<span class="stripe-i ${r.s.bias}-c"></span>${esc(title(r.s.key))}` : '<span class="muted">none</span>'}</td>
           <td style="font-family:var(--font-ui)">${r.s && r.s.status ? `<span class="pill st ${r.s.status}">${esc(STATUS_WORD[r.s.status] || r.s.status)}</span>` : ''}</td>
           <td>${r.s && r.s.targets && r.s.targets[0] ? fmt(r.s.targets[0].price) + ' <span class="muted">(' + esc(r.s.targets[0].label.replace(' (equal move)', '')) + ')</span>' : r.s && r.s.plan ? fmt(r.s.plan.target) : '–'}</td></tr>`).join('')}
-        </tbody></table></div>${done ? '<p class="muted" style="margin:6px 0 0;font-size:12px">Click a row to open its chart. Setups: chart patterns, level and trend-line breaks from the last few bars; "Potential" breaks still need a second close.</p>' : `<p class="muted" style="margin:6px 0 0"><span class="spin" style="display:inline-block;vertical-align:-2px"></span> Scanning ${rows.length + 1} of ${list.length}…</p>`}`;
+        </tbody></table></div>${done ? '<p class="muted" style="margin:6px 0 0;font-size:12px">Click a row to open its chart. Setups: chart patterns, level and trend-line breaks from the last few bars; "Potential" breaks still need a second close.</p>' : `<p class="muted" style="margin:6px 0 0"><span class="spin" style="display:inline-block;vertical-align:-2px"></span> Scanning ${rows.length + 1} of ${list.length}…${waitNote}</p>`}`;
+      waitNote = '';
       out.querySelectorAll('tr[data-sym]').forEach(tr => tr.addEventListener('click', () => {
         const sym = tr.dataset.sym; const o = src.querySelector(`option[value="L:${CSS.escape(sym)}"]`);
         if (o) src.value = o.value; loadLive(sym); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -392,14 +462,16 @@
     for (const [sym, name] of list) {
       paint(false);
       try {
+        if (!bench) { try { bench = await Live.load(Live.BENCH, tf); } catch (e) { bench = { bars: null }; } }
         const d = await Live.load(sym, tf);
         const an = P.analyze(d.bars);
+        const rsx = bench.bars && sym !== Live.BENCH ? CX.relStrength(d.bars, bench.bars, CX.RS_N[tf]) : null;
         const s = an.signals.find(x => x.kind !== 'candle' && x.status !== 'failed' && x.age <= 10) || null;
-        rows.push({ sym, name, m: an.market, s });
+        rows.push({ sym, name: d.via ? name + ' (via ' + d.via + ')' : name, m: an.market, s, rs: rsx && rsx.diff != null ? rsx.diff : null });
       } catch (err) {
         const x = Live.explain(err);
         rows.push({ sym, err: x.msg });
-        if (['no_mcp', 'server_not_connected', 'needs_reauth', 'not_in_manifest', 'approval_required', 'blocked_by_policy', 'consent_required'].includes(err.code)) break; // same answer for every symbol
+        if (['no_source', 'no_key', 'bad_key', 'no_mcp', 'server_not_connected', 'needs_reauth', 'not_in_manifest', 'approval_required', 'blocked_by_policy', 'consent_required'].includes(err.code)) break; // same answer for every symbol
       }
     }
     paint(true);
@@ -738,6 +810,7 @@
         <div class="plot-wrap" id="trkPlot"></div>
       </div>
       ${confirmSection()}
+      ${contextSection()}
       <div class="card plot-card">
         <div class="plot-head"><h3>Recognition test</h3><span class="muted" style="font-size:12px">${acc ? acc.seeds : ''} planted examples per pattern and noise level</span></div>
         <div class="tbl-wrap" style="padding:4px 6px 10px">${accTable()}</div>
@@ -776,6 +849,18 @@
       <div class="plot-head"><h3>Take-profit targets: how often each was reached</h3><span class="muted" style="font-size:12px">confirmed breaks, before the stop, within the holding window</span></div>
       <div class="tbl-wrap" style="padding:4px 6px 4px"><table class="data"><thead><tr><th>Timeframe</th>${TG.map(k => `<th>${TL[k]}</th>`).join('')}</tr></thead><tbody>${tgRows}</tbody></table></div>
       <p class="muted" style="margin:0;padding:0 16px 14px;font-size:12.5px;max-width:90ch">Fibonacci targets extend the breakout swing (from the base's low to the breakout level): 1.272 adds 27% of that swing, 1.618 adds 62%, 2.0 a full equal move. The measured move is each pattern's own textbook projection. Percent = hit rate; R = average result if you always exit at that target. Closer targets hit more often and pay less, so the averages end up similar: pick by how you manage the trade, for example take part at 1.272 and trail the rest.</p>
+    </div>`;
+  }
+  function contextSection() {
+    const X = T.context; if (!X || !X.D) return '';
+    const names = [['baseline (all)', 'Every setup (baseline)'], ['weekly aligned', 'Weekly trend agrees with the trade'], ['weekly against', 'Weekly trend against the trade'], ['regime aligned', 'Market regime agrees (S&P vs 200-day)'], ['regime against', 'Market regime against'], ['RS aligned (top/bottom 30%)', 'Relative strength agrees (top 30% for longs)'], ['RS against', 'Relative strength against'], ['all three aligned', 'All three agree']];
+    const cell = x => (x && x.all ? `${sgn(x.all.edge)} <span class="muted">(${fmtN(x.all.n)})</span>` : '–');
+    const per = x => (x && x.a && x.b ? `${sgn(x.a.edge)} / ${sgn(x.b.edge)}` : '–');
+    const rows = names.map(([k, label]) => { const d = X.D[k] || {}, w = X.W[k] || {}; return `<tr><td style="font-family:var(--font-ui)">${esc(label)}</td><td>${cell(d.long)}</td><td>${per(d.long)}</td><td>${cell(d.short)}</td><td>${cell(w.long)}</td><td>${cell(w.short)}</td></tr>`; }).join('');
+    return `<div class="card plot-card">
+      <div class="plot-head"><h3>Do trend, market regime or relative strength help?</h3><span class="muted" style="font-size:12px">edge vs random entries in R (trades)</span></div>
+      <div class="method" style="padding-top:12px;padding-bottom:4px"><p style="margin:0;max-width:88ch">Textbook advice says to trade with the weekly trend, in a healthy market, and in the strongest stocks. We tagged every backtest trade with those three conditions, using only data available that day (the market = an equal-weighted index of the test stocks). None of them improved results over random entries in the same direction; aligned trades did slightly worse, in both periods. Over a 1–8 week swing with ATR-based stops, these large stocks tended to give back strength. The app shows the three as context for reading the chart, not as a filter.</p></div>
+      <div class="tbl-wrap" style="padding:0 6px 10px"><table class="data"><thead><tr><th>Condition</th><th>Daily long</th><th>Daily long 2000–12 / 2016–20</th><th>Daily short</th><th>Weekly long</th><th>Weekly short</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
   }
   function accTable() {
@@ -834,8 +919,82 @@
     });
   }
 
+  /* ================= JOURNAL ================= */
+  const J = window.SPJ;
+  let jEditing = null;
+  const jSetupOpts = () => '<option value="">Other / discretionary</option>' + LIB.ORDER.filter(c => c !== 'Foundations').map(c => `<optgroup label="${esc(c)}">${Object.entries(LIB.entries).filter(([, e]) => e.cat === c).map(([k, e]) => `<option value="${k}">${esc(e.title)}</option>`).join('')}</optgroup>`).join('');
+  $('#jSetup').innerHTML = jSetupOpts();
+  const jf = id => $('#' + id);
+  function jOpenForm(t) {
+    jEditing = t && t.id ? t : null;
+    t = t || { dir: 1, tf: state.tf, entryDate: new Date().toISOString().slice(0, 10) };
+    jf('jFormTitle').textContent = jEditing ? 'Edit trade' : 'New trade';
+    jf('jSym').value = t.sym || ''; jf('jDir').value = String(t.dir || 1); jf('jSetup').value = t.setup || ''; jf('jTf').value = t.tf || 'D';
+    jf('jEntryDate').value = t.entryDate || ''; jf('jEntry').value = t.entry ?? ''; jf('jStop').value = t.stop ?? ''; jf('jTarget').value = t.target ?? '';
+    jf('jShares').value = t.shares ?? ''; jf('jExitDate').value = t.exitDate || ''; jf('jExit').value = t.exit ?? ''; jf('jNotes').value = t.notes || '';
+    jf('jErr').hidden = true; jf('jForm').hidden = false; jCalc();
+    setTimeout(() => jf('jForm').scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+  }
+  function jRead() {
+    const n = id => (jf(id).value === '' ? '' : +jf(id).value);
+    return { sym: jf('jSym').value.trim().toUpperCase(), dir: +jf('jDir').value, setup: jf('jSetup').value, tf: jf('jTf').value, entryDate: jf('jEntryDate').value, entry: n('jEntry'), stop: n('jStop'), target: n('jTarget'), shares: n('jShares'), exitDate: jf('jExitDate').value, exit: n('jExit'), notes: jf('jNotes').value.trim() };
+  }
+  function jCalc() {
+    const t = jRead(), risk = Math.abs(t.entry - t.stop);
+    if (!(t.entry > 0 && t.stop > 0) || !risk) { jf('jCalc').textContent = ''; return; }
+    const wrong = t.dir * (t.entry - t.stop) <= 0;
+    const parts = [wrong ? 'The stop is on the wrong side of the entry for a ' + (t.dir > 0 ? 'long' : 'short') + '.' : 'Risk ' + fmt(risk) + ' per share' + (t.shares ? ' = ' + (risk * t.shares).toFixed(0) + ' in total' : '') + '.'];
+    if (t.target > 0) parts.push('Target pays ' + (Math.abs(t.target - t.entry) / risk).toFixed(1) + 'R.');
+    const x = J.result(t); if (x && x.r != null) parts.push('Result: ' + sgn(x.r) + 'R' + (t.shares ? ', ' + (x.pnl >= 0 ? '+' : '') + x.pnl.toFixed(0) : '') + '.');
+    jf('jCalc').textContent = parts.join(' ');
+  }
+  jf('jForm').addEventListener('input', jCalc);
+  jf('jNew').addEventListener('click', () => jOpenForm(null));
+  jf('jCancel').addEventListener('click', () => { jf('jForm').hidden = true; jEditing = null; });
+  jf('jForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const t = jRead();
+    const bad = !t.sym ? 'Add a symbol.' : !(t.entry > 0) ? 'Add the entry price.' : !(t.stop > 0) ? 'Add the stop.' : t.dir * (t.entry - t.stop) <= 0 ? 'The stop must be below the entry for a long, above it for a short.' : (t.exit !== '' && !t.exitDate) ? 'Add the exit date.' : '';
+    if (bad) { jf('jErr').textContent = bad; jf('jErr').hidden = false; return; }
+    if (jEditing) { t.id = jEditing.id; t.createdAt = jEditing.createdAt; }
+    try { await J.save(t); jf('jForm').hidden = true; jEditing = null; renderJournal(); }
+    catch (err) { jf('jErr').textContent = 'Could not save: ' + (err && err.code ? err.code : 'storage unavailable') + '.'; jf('jErr').hidden = false; }
+  });
+  async function renderJournal() {
+    const b = await J.backend();
+    jf('jStore').textContent = b.kind === 'account' ? 'Trade journal · saved privately to your claude.ai account' : 'Trade journal · saved on this device';
+    let trades = [];
+    try { trades = await J.list(); } catch (e) { jf('jOpen').innerHTML = '<p class="empty">Could not read the journal.</p>'; return; }
+    const st = J.stats(trades);
+    jf('jTiles').innerHTML = `<div class="tile"><b>${st.closed}</b><span>closed trades (${st.open} open)</span></div><div class="tile"><b>${st.win == null ? '–' : (st.win * 100).toFixed(0) + '%'}</b><span>win rate</span></div><div class="tile"><b>${st.avgR == null ? '–' : sgn(st.avgR) + 'R'}</b><span>average result per trade</span></div><div class="tile"><b>${st.closed ? (st.pnl >= 0 ? '+' : '') + st.pnl.toFixed(0) : '–'}</b><span>total profit/loss (needs shares)</span></div>`;
+    const open = trades.filter(t => !J.result(t)), closed = trades.filter(t => J.result(t));
+    const setupName = k => (k && LIB.entries[k] ? LIB.entries[k].title : 'Other');
+    jf('jOpen').innerHTML = open.length ? `<table class="data"><thead><tr><th>Symbol</th><th>Setup</th><th>Since</th><th>Entry</th><th>Stop</th><th>Target</th><th>Shares</th><th></th></tr></thead><tbody>${open.map(t => `<tr><td><b>${esc(t.sym)}</b> <span class="muted">${t.dir > 0 ? 'long' : 'short'}</span></td><td style="font-family:var(--font-ui)">${esc(setupName(t.setup))}</td><td>${esc(t.entryDate || '')}</td><td>${fmt(+t.entry)}</td><td>${fmt(+t.stop)}</td><td>${t.target ? fmt(+t.target) : '–'}</td><td>${t.shares || '–'}</td><td><button class="link" type="button" data-edit="${esc(t.id)}">Close / edit</button> · <button class="link" type="button" data-del="${esc(t.id)}">Delete</button></td></tr>`).join('')}</tbody></table>` : '<p class="empty">No open trades. Use "Log this trade" on a setup, or New trade.</p>';
+    jf('jClosed').innerHTML = closed.length ? `<table class="data"><thead><tr><th>Symbol</th><th>Setup</th><th>Entry</th><th>Exit</th><th>Result</th><th>P/L</th><th></th></tr></thead><tbody>${closed.map(t => { const x = J.result(t); return `<tr><td><b>${esc(t.sym)}</b> <span class="muted">${t.dir > 0 ? 'long' : 'short'}</span></td><td style="font-family:var(--font-ui)">${esc(setupName(t.setup))}</td><td>${fmt(+t.entry)} <span class="muted">${esc(t.entryDate || '')}</span></td><td>${fmt(+t.exit)} <span class="muted">${esc(t.exitDate || '')}</span></td><td class="${(x.r || 0) >= 0 ? 'upc' : 'dnc'}">${x.r == null ? '–' : sgn(x.r) + 'R'}</td><td>${t.shares ? (x.pnl >= 0 ? '+' : '') + x.pnl.toFixed(0) : '–'}</td><td><button class="link" type="button" data-edit="${esc(t.id)}">Edit</button> · <button class="link" type="button" data-del="${esc(t.id)}">Delete</button></td></tr>`; }).join('')}</tbody></table>` : '<p class="empty">Closed trades appear here with their result in R.</p>';
+    const groups = {};
+    for (const t of closed) { const k = (t.setup || '') + '|' + (t.tf || 'D'); (groups[k] = groups[k] || []).push(J.result(t).r); }
+    const rows = Object.entries(groups).map(([k, rs]) => { const [setup, tf] = k.split('|'); const mine = rs.filter(r => r != null); const bt = setup && T && T.byKey[setup] && T.byKey[setup][tf]; return `<tr><td style="font-family:var(--font-ui)">${esc(setupName(setup))}</td><td style="font-family:var(--font-ui)">${TFW[tf] || tf}</td><td>${mine.length}</td><td>${mine.length ? sgn(mine.reduce((a, b) => a + b, 0) / mine.length) + 'R' : '–'}</td><td>${bt ? sgn(bt.avgR) + 'R' : '–'}</td><td>${bt ? (bt.win * 100).toFixed(0) + '%' : '–'}</td></tr>`; });
+    jf('jVs').innerHTML = rows.length ? `<table class="data"><thead><tr><th>Setup</th><th>Timeframe</th><th>Your trades</th><th>Your avg</th><th>Backtest avg</th><th>Backtest win</th></tr></thead><tbody>${rows.join('')}</tbody></table><p class="muted" style="margin:6px 12px 10px;font-size:12px">A handful of trades says little; the comparison gets meaningful after 20 or more per setup.</p>` : '<p class="empty">Close some trades to compare your results with the backtest.</p>';
+    const confirmDel = new Set();
+    for (const btn of document.querySelectorAll('#view-journal [data-edit]')) btn.addEventListener('click', () => { const t = trades.find(x => x.id === btn.dataset.edit); jOpenForm(t); });
+    for (const btn of document.querySelectorAll('#view-journal [data-del]')) btn.addEventListener('click', async () => {
+      const id = btn.dataset.del;
+      if (!confirmDel.has(id)) { confirmDel.add(id); btn.textContent = 'Tap again to delete'; return; }
+      await J.remove(id); renderJournal();
+    });
+  }
+  jf('jExport').addEventListener('click', async () => {
+    const csv = J.csv(await J.list());
+    const name = 'trade-journal-' + new Date().toISOString().slice(0, 10) + '.csv';
+    try {
+      const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+      if (dl) { await dl.save({ filename: name, data: csv }); return; }
+    } catch (e) { /* declined or unavailable: fall through */ }
+    try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { /* not allowed here */ }
+  });
+
   /* ================= ROUTING & THEME ================= */
-  const VIEWS = ['analyze', 'learn', 'trainer', 'track'];
+  const VIEWS = ['analyze', 'learn', 'journal', 'trainer', 'track'];
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'analyze';
     VIEWS.forEach(n => { $('#view-' + n).hidden = n !== v; });
@@ -843,6 +1002,7 @@
     if (v === 'learn') { if (!$('#article').innerHTML) openLesson(libKey); else libChart.render(); }
     if (v === 'trainer' && !trainer.cur) trainer.next();
     if (v === 'track' && !$('#view-track').innerHTML) renderTrack();
+    if (v === 'journal') renderJournal();
     if (v === 'analyze') chart.render();
     if (v === 'trainer') trChart.render();
   }
@@ -851,6 +1011,21 @@
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender); } catch (e) { /* old browsers */ }
   new MutationObserver(rerender).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => chart.render());
+
+  /* ---------- installed app: offline cache + iPhone install hint ---------- */
+  (function () {
+    let framed = true; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+    if (framed || !/^https?:$/.test(location.protocol)) return; // inside claude.ai or opened as a file
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { /* not available */ });
+    const standalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (!ios || standalone || store.get('installHint', false)) return;
+    const bar = document.createElement('div');
+    bar.className = 'install-hint';
+    bar.innerHTML = '<span>Install Swing Pattern Lab: tap <b>Share</b> then <b>Add to Home Screen</b>. It then opens full screen and appears in your App Library.</span><button class="btn ghost" type="button">Got it</button>';
+    bar.querySelector('button').addEventListener('click', () => { store.set('installHint', true); bar.remove(); });
+    document.body.appendChild(bar);
+  })();
 
   // boot
   src.value = 's:' + D.samples[0].id;

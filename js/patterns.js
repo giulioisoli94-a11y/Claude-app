@@ -818,6 +818,8 @@
       const p = s.plan; if (!p) continue;
       const a = atr[Math.min(n - 1, s.i)], dir = p.target > p.entry ? 1 : -1;
       if (dir * (p.entry - p.stop) < 0.75 * a) { const np = plan(p.entry, p.entry - dir * 0.75 * a, p.target); np.widened = true; s.plan = np; }
+      // and never further than 4 ATR: a stop beyond that rests on old, unrelated swings
+      else if (dir * (p.entry - p.stop) > 4 * a) { const np = plan(p.entry, p.entry - dir * 4 * a, p.target); np.capped = true; s.plan = np; }
     }
     // breakout facts: swing size, target ladder (Fibonacci + measured move), confirmation
     for (const s of sigs) P.breakInfo(bars, ind, s);
