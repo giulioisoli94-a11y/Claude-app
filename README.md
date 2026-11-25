@@ -50,6 +50,8 @@ Each setup comes with:
 
 **Morning scan**: `node scan/daily.js` scans the indexes (via ETFs) and 18 leaders on Twelve Data and prints confirmed breakouts, potential breakouts awaiting their second close, and patterns near their line. A scheduled task runs it each weekday before the US open.
 
+**Paper portfolio**: every confirmed breakout (long) and breakdown (short) from the morning scan is traded on paper with fixed rules: entry at the next open (not chased if it opens more than 1 ATR past the planned entry), exit at the stop, the measured-move target or after 15 trading days, 100 $ risk per trade on a 10,000 $ account, one position per symbol. Signals since 2026-08-03 are replayed with the same rules; new ones are added each weekday. The ledger is `paper/ledger.json` (rules in `scan/paper.js`) and the **Paper** tab shows the account against SPY, open positions and every closed trade.
+
 **Timeframes**: Daily, Weekly and Monthly. **Backtest this chart** replays the scanner bar by bar over any loaded stock.
 
 ## How detection works
@@ -70,6 +72,7 @@ js/context.js       higher-timeframe trend, market regime, relative strength
 js/journal.js       trade journal storage (claude.ai account or device)
 sw.js               offline cache for the installed app
 scan/daily.js       daily market scan (Twelve Data)
+scan/paper.js       paper-trading rules and ledger (paper/ledger.json)
 icons/              app icon (SVG source + PNG sizes), manifest.webmanifest
 js/trackrecord.js   generated backtest results shown in the app
 js/chart.js         canvas candlestick chart (zoom, pan, overlays)

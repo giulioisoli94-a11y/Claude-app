@@ -993,8 +993,98 @@
     try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { /* not allowed here */ }
   });
 
+  /* ================= PAPER PORTFOLIO ================= */
+  let paperData = null;
+  async function renderPaper() {
+    const box = $('#view-paper');
+    if (!paperData) {
+      box.innerHTML = '<div class="card tr-hero"><p class="muted">Loading the paper portfolio…</p></div>';
+      try { const r = await fetch('paper/ledger.json', { cache: 'no-cache' }); if (!r.ok) throw new Error(r.status); paperData = await r.json(); }
+      catch (e) { box.innerHTML = '<div class="card tr-hero"><h2>Paper portfolio</h2><p>The portfolio file could not be loaded here. It is updated every weekday by the morning scan and published with the installed app at giulioisoli94-a11y.github.io/Claude-app.</p></div>'; return; }
+    }
+    const L = paperData, S = L.summary, R = L.rules, trades = L.trades;
+    const closed = trades.filter(t => t.status === 'closed'), open = trades.filter(t => t.status === 'open'), pending = trades.filter(t => t.status === 'pending'), skipped = trades.filter(t => t.status === 'skipped');
+    const money = x => (x >= 0 ? '+' : '−') + Math.abs(x).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' $';
+    const pc = x => (x == null ? '–' : (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%');
+    const side = t => (t.dir > 0 ? 'long' : 'short');
+    const nm = k => esc(title(k));
+    // equity: realised P&L by exit date, against SPY bought on the start date
+    const bench = L.bench || [];
+    const eq = bench.map(b => ({ t: b.t, v: R.account + closed.filter(x => x.exitDate <= b.t).reduce((a, x) => a + x.pnl, 0) }));
+    const spy = bench.length ? bench.map(b => ({ t: b.t, v: R.account * b.c / bench[0].c })) : [];
+    const finalEq = eq.length ? eq[eq.length - 1].v : R.account, finalSpy = spy.length ? spy[spy.length - 1].v : R.account;
+    // by setup
+    const g = {}; for (const t of closed) (g[t.key] = g[t.key] || []).push(t);
+    const bySetup = Object.entries(g).sort((a, b) => b[1].length - a[1].length).map(([k, v]) => `<tr><td style="font-family:var(--font-ui)">${nm(k)}</td><td>${v.length}</td><td>${Math.round(v.filter(t => t.pnl > 0).length / v.length * 100)}%</td><td>${sgn(v.reduce((a, t) => a + t.r, 0) / v.length)}R</td><td>${money(v.reduce((a, t) => a + t.pnl, 0))}</td></tr>`).join('');
+    const live = trades.filter(t => t.source === 'live').length;
+    box.innerHTML = `
+      <div class="card tr-hero">
+        <div class="eyebrow">Paper portfolio · updated ${esc((L.updatedAt || '').slice(0, 10))} · data to ${esc(L.lastSignalDate || '')}</div>
+        <h2>What if you had taken every confirmed breakout?</h2>
+        <p>Each weekday the morning scan opens a simulated trade on every <b>confirmed</b> breakout (long) or breakdown (short) it reports, with fixed rules, and follows it for up to three weeks. Trades from ${esc(R.start)} to the day this started are replayed with the same rules (marked "history"); from then on they are added live${live ? ` (${live} so far)` : ''}.</p>
+        <div class="tiles">
+          <div class="tile"><b>${money(S.pnl)}</b><span>realised on a ${R.account.toLocaleString('en-US')} $ account (${pc(S.pnl / R.account * 100)}); SPY bought on ${esc(R.start)}: ${pc((finalSpy / R.account - 1) * 100)}</span></div>
+          <div class="tile"><b>${S.closed}</b><span>closed trades · ${S.winRate == null ? '–' : Math.round(S.winRate * 100) + '%'} profitable</span></div>
+          <div class="tile"><b>${S.avgR == null ? '–' : sgn(S.avgR) + 'R'}</b><span>average per trade (${pc(S.avgPct)}; SPY over the same days ${pc(S.avgSpyPct)})</span></div>
+          <div class="tile"><b>${S.open}</b><span>open now (${money(S.openPnl)} unrealised)${S.pending ? ' · ' + S.pending + ' waiting for the open' : ''}</span></div>
+        </div>
+        <details class="rules-box"><summary>The rules</summary><ul>
+          <li>Signal: a breakout or breakdown confirmed by a second close beyond the line (the scan's "Confirmed" list). Long on breakouts, short on breakdowns.</li>
+          <li>Entry: the next trading day's open, but only if it is within ${R.maxChaseAtr || 1} ATR of the planned entry; a gap beyond that is not chased (${skipped.length} skipped so far).</li>
+          <li>Exit: the setup's stop, its measured-move target, or the close of the ${R.hold}th trading day, whichever comes first. If stop and target fall on the same day, the stop counts.</li>
+          <li>Size: ${R.riskUsd} $ risk per trade (1% of ${R.account.toLocaleString('en-US')} $); one position per symbol. No commissions, slippage or borrowing costs for shorts.</li>
+          <li>Universe: 5 index ETFs and 18 large Nasdaq and S&amp;P stocks, daily bars from Twelve Data.</li>
+        </ul></details>
+      </div>
+      <div class="card plot-card">
+        <div class="plot-head"><h3>Account value: paper portfolio vs S&amp;P 500</h3><div class="legend"><span><i class="sig" style="background:var(--accent)"></i>Paper portfolio (realised)</span><span><i class="ctrl"></i>SPY, bought on ${esc(R.start)}</span></div></div>
+        <div class="plot-wrap" id="pEq" style="padding:8px 8px 4px"></div>
+      </div>
+      ${open.length || pending.length ? `<div class="card plot-card"><div class="plot-head"><h3>Open positions</h3><span class="muted" style="font-size:12px">marked at the last close</span></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Symbol</th><th>Setup</th><th>Entry</th><th>Stop</th><th>Target</th><th>Last</th><th>Now</th><th>Day</th></tr></thead><tbody>
+        ${open.map(t => { const r = t.dir * (t.mark - t.entry) / Math.abs(t.entry - t.stop); return `<tr><td><b>${esc(t.sym)}</b> <span class="muted">${side(t)}</span></td><td style="font-family:var(--font-ui)">${nm(t.key)}</td><td>${fmt(t.entry)} <span class="muted">${esc(t.entryDate)}</span></td><td>${fmt(t.stop)}</td><td>${fmt(t.target)}</td><td>${fmt(t.mark)}</td><td class="${r >= 0 ? 'upc' : 'dnc'}">${sgn(r)}R</td><td>${t.days}/${R.hold}</td></tr>`; }).join('')}
+        ${pending.map(t => `<tr><td><b>${esc(t.sym)}</b> <span class="muted">${side(t)}</span></td><td style="font-family:var(--font-ui)">${nm(t.key)}</td><td colspan="6" class="muted" style="font-family:var(--font-ui)">Signal ${esc(t.signalDate)}: enters at the next open if within 1 ATR of the planned entry · stop ${fmt(t.stop)} · target ${fmt(t.target)}</td></tr>`).join('')}
+        </tbody></table></div></div>` : ''}
+      <div class="card plot-card"><div class="plot-head"><h3>Results by setup</h3></div><div class="tbl-wrap"><table class="data"><thead><tr><th>Setup</th><th>Trades</th><th>Profitable</th><th>Avg</th><th>Total</th></tr></thead><tbody>${bySetup}</tbody></table></div>
+        <p class="muted" style="margin:0;padding:6px 16px 14px;font-size:12.5px">Exits: ${S.byOutcome.target} at target, ${S.byOutcome.stop} at the stop, ${S.byOutcome.time} after ${R.hold} days. ${S.hit1272 == null ? '' : Math.round(S.hit1272 * 100) + '% reached the Fib 1.272 level along the way.'} A few months of trades is a small sample; read it next to the long-run Track record.</p></div>
+      <div class="card plot-card"><div class="plot-head"><h3>Closed trades</h3><span class="muted" style="font-size:12px">${closed.length}, newest first</span></div><div class="tbl-wrap" style="max-height:520px;overflow:auto"><table class="data"><thead><tr><th>Symbol</th><th>Setup</th><th>Entry</th><th>Exit</th><th>Exit by</th><th>Result</th><th>Return</th><th>P/L</th><th>SPY same days</th><th></th></tr></thead><tbody>
+        ${closed.map(t => `<tr><td><b>${esc(t.sym)}</b> <span class="muted">${side(t)}</span></td><td style="font-family:var(--font-ui)">${nm(t.key)}</td><td>${fmt(t.entry)} <span class="muted">${esc(t.entryDate)}</span></td><td>${fmt(t.exit)} <span class="muted">${esc(t.exitDate)}</span></td><td style="font-family:var(--font-ui)">${t.outcome === 'target' ? 'target' : t.outcome === 'stop' ? 'stop' : t.days + ' days'}</td><td class="${t.r >= 0 ? 'upc' : 'dnc'}">${sgn(t.r)}R</td><td>${pc(t.pct)}</td><td>${money(t.pnl)}</td><td>${pc(t.spyPct)}</td><td class="muted" style="font-family:var(--font-ui)">${t.source === 'live' ? 'live' : 'history'}</td></tr>`).join('')}
+        </tbody></table></div></div>`;
+    drawEquity($('#pEq'), eq, spy, R.account);
+  }
+  function drawEquity(el, eq, spy, base) {
+    if (!eq.length) { el.innerHTML = '<p class="empty">No data yet.</p>'; return; }
+    const W = 900, H = 260, l = 58, r = 92, tp = 14, bt = 26;
+    const all = eq.concat(spy).map(p => p.v); let lo = Math.min(...all, base), hi = Math.max(...all, base);
+    const pad = (hi - lo) * 0.08 || 100; lo -= pad; hi += pad;
+    const X = i => l + i / Math.max(1, eq.length - 1) * (W - l - r), Y = v => tp + (hi - v) / (hi - lo) * (H - tp - bt);
+    const path = s => s.map((p, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p.v).toFixed(1)).join(' ');
+    const step = Math.pow(10, Math.floor(Math.log10((hi - lo) / 4))); const st = [1, 2, 5, 10].map(m => m * step).find(s => (hi - lo) / s <= 5) || step * 10;
+    let g = '';
+    for (let v = Math.ceil(lo / st) * st; v <= hi; v += st) g += `<line x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === base ? 'var(--fg-muted)' : 'var(--line)'}" stroke-width="1"/><text class="muted-t" x="${l - 6}" y="${Y(v) + 4}" text-anchor="end">${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k</text>`;
+    const months = []; eq.forEach((p, i) => { if (i === 0 || p.t.slice(0, 7) !== eq[i - 1].t.slice(0, 7)) months.push(i); });
+    g += months.map(i => `<text class="muted-t" x="${X(i)}" y="${H - 6}" text-anchor="middle">${new Date(eq[i].t + 'T00:00:00Z').toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })}</text>`).join('');
+    const e = eq[eq.length - 1], s = spy[spy.length - 1];
+    el.innerHTML = `<svg class="dotplot" viewBox="0 0 ${W} ${H}" style="min-width:0" role="img" aria-label="Paper portfolio ${Math.round(e.v)} dollars vs SPY ${Math.round(s.v)} dollars">${g}
+      <path d="${path(spy)}" fill="none" stroke="var(--ctrl)" stroke-width="2" stroke-dasharray="5 4"/>
+      <path d="${path(eq)}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle cx="${X(eq.length - 1)}" cy="${Y(e.v)}" r="4" fill="var(--accent)"/><text class="num-t" x="${X(eq.length - 1) + 8}" y="${Y(e.v) + 4}">${Math.round(e.v).toLocaleString('en-US')} $</text>
+      <circle cx="${X(spy.length - 1)}" cy="${Y(s.v)}" r="4" fill="var(--ctrl)"/><text class="num-t" x="${X(spy.length - 1) + 8}" y="${Y(s.v) + 4}">${Math.round(s.v).toLocaleString('en-US')} $</text>
+      <line id="pX" x1="0" x2="0" y1="${tp}" y2="${H - bt}" stroke="var(--fg-muted)" stroke-dasharray="3 3" visibility="hidden"/>
+      <rect x="${l}" y="${tp}" width="${W - l - r}" height="${H - tp - bt}" fill="transparent" id="pHit"/></svg>`;
+    const svg = el.querySelector('svg'), hit = el.querySelector('#pHit'), cx = el.querySelector('#pX');
+    const tip = document.querySelector('.tip') || document.body.appendChild(Object.assign(document.createElement('div'), { className: 'tip', hidden: true }));
+    hit.addEventListener('mousemove', ev => {
+      const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const i = Math.max(0, Math.min(eq.length - 1, Math.round((p.x - l) / (W - l - r) * (eq.length - 1))));
+      cx.setAttribute('x1', X(i)); cx.setAttribute('x2', X(i)); cx.setAttribute('visibility', 'visible');
+      tip.innerHTML = `<b>${esc(eq[i].t)}</b><br><span class="num">Paper ${Math.round(eq[i].v).toLocaleString('en-US')} $ · SPY ${Math.round(spy[i].v).toLocaleString('en-US')} $</span>`;
+      tip.hidden = false; tip.style.left = Math.min(window.innerWidth - 240, ev.clientX + 14) + 'px'; tip.style.top = (ev.clientY + 14) + 'px';
+    });
+    hit.addEventListener('mouseleave', () => { tip.hidden = true; cx.setAttribute('visibility', 'hidden'); });
+  }
+
   /* ================= ROUTING & THEME ================= */
-  const VIEWS = ['analyze', 'learn', 'journal', 'trainer', 'track'];
+  const VIEWS = ['analyze', 'learn', 'journal', 'paper', 'trainer', 'track'];
   function route() {
     const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'analyze';
     VIEWS.forEach(n => { $('#view-' + n).hidden = n !== v; });
@@ -1003,6 +1093,7 @@
     if (v === 'trainer' && !trainer.cur) trainer.next();
     if (v === 'track' && !$('#view-track').innerHTML) renderTrack();
     if (v === 'journal') renderJournal();
+    if (v === 'paper') renderPaper();
     if (v === 'analyze') chart.render();
     if (v === 'trainer') trChart.render();
   }

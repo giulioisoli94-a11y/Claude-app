@@ -1,7 +1,7 @@
 /* Offline support for the installed app: the app files are cached and served
    instantly, then refreshed in the background. Price data is never cached here
    (the app keeps its own 15-minute cache). Bump VERSION on each release. */
-const VERSION = 'spl-v4';
+const VERSION = 'spl-v5';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/indicators.js', './js/data.js', './js/patterns.js', './js/learn.js', './js/backtest.js', './js/live.js',
@@ -17,6 +17,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return; // prices and fonts go straight to the network
+  if (url.pathname.endsWith('.json')) { // the paper portfolio changes daily: network first, cached copy only offline
+    e.respondWith(caches.open(VERSION).then(cache => fetch(e.request).then(r => { if (r && r.ok) cache.put(e.request, r.clone()); return r; }).catch(() => cache.match(e.request, { ignoreSearch: true }))));
+    return;
+  }
   e.respondWith(caches.open(VERSION).then(async cache => {
     const hit = await cache.match(e.request, { ignoreSearch: true });
     const net = fetch(e.request).then(r => { if (r && r.ok) cache.put(e.request, r.clone()); return r; }).catch(() => hit);

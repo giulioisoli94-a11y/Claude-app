@@ -378,3 +378,11 @@ table.data.rules td:nth-child(2), table.data.rules th:nth-child(2) { text-align:
 .install-hint { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; gap: 10px; align-items: center; justify-content: space-between;
   background: var(--surface); border-top: 1px solid var(--line); font-size: 13px; box-shadow: 0 -6px 18px rgb(0 0 0 / 0.08);
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+.rules-box { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.rules-box summary { cursor: pointer; font-weight: 700; }
+.rules-box ul { margin: 8px 0 2px; padding-left: 18px; display: grid; gap: 4px; }
+@media (max-width: 560px) {
+  .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs a { white-space: nowrap; padding: 6px 11px; }
+}

@@ -27,7 +27,12 @@ function get(sym) {
     let j;
     try { j = JSON.parse(execFileSync('curl', ['-s', '-m', '40', url], { encoding: 'utf8' })); } catch (e) { return { err: 'request failed' }; }
     if (j.status === 'ok' && Array.isArray(j.values)) {
-      return { bars: j.values.map(v => ({ t: v.datetime.slice(0, 10), o: +v.open, h: +v.high, l: +v.low, c: +v.close, v: +v.volume || 0 })).filter(b => b.c > 0) };
+      const bars = j.values.map(v => ({ t: v.datetime.slice(0, 10), o: +v.open, h: +v.high, l: +v.low, c: +v.close, v: +v.volume || 0 })).filter(b => b.c > 0);
+      // drop today's bar while the US session is still open: signals use completed days only
+      const ny = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      const nyDate = ny.getFullYear() + '-' + String(ny.getMonth() + 1).padStart(2, '0') + '-' + String(ny.getDate()).padStart(2, '0');
+      if (bars.length && bars[bars.length - 1].t === nyDate && ny.getHours() * 60 + ny.getMinutes() < 16 * 60 + 15) bars.pop();
+      return { bars };
     }
     if (j.code === 429 && attempt === 0) { sleep(61000); continue; }
     return { err: (j.message || 'error').replace(/https?:\S+/g, '').trim().slice(0, 120), code: j.code };
@@ -88,6 +93,13 @@ if (ranked.length) {
   lines.push('Strongest: ' + ranked.slice(0, 5).map(r => `${r.sym} ${r.rs >= 0 ? '+' : ''}${r.rs.toFixed(1)}%`).join(', ') + '. Weakest: ' + ranked.slice(-3).map(r => `${r.sym} ${r.rs >= 0 ? '+' : ''}${r.rs.toFixed(1)}%`).join(', ') + '.');
 }
 lines.push('', `_${rows.length} symbols scanned from Twelve Data${errors.length ? '; skipped: ' + errors.join('; ') : ''}. Potential breakouts need a second close beyond the line. Context, not advice: in our backtest no setup was a reliable edge on its own._`);
+fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
+fs.writeFileSync(path.join(__dirname, 'out', 'bars.json'), JSON.stringify({ rows: rows.map(r => ({ sym: r.sym, bars: r.bars })), bench }));
+// paper portfolio: trade confirmed breaks with fixed rules (see scan/paper.js)
+try {
+  const pp = require('./paper.js').update(rows.map(r => ({ sym: r.sym, bars: r.bars })), bench);
+  lines.splice(lines.length - 1, 0, ...pp.lines);
+} catch (e) { lines.push('', '_Paper portfolio not updated: ' + e.message + '_'); }
 const md = lines.join('\n');
 fs.mkdirSync(path.join(__dirname, 'out'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'out', day + '.md'), md);
