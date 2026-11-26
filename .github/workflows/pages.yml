@@ -20,7 +20,7 @@ jobs:
       - name: Collect app files (no backtest data or tests)
         run: |
           mkdir -p site
-          cp -r index.html manifest.webmanifest sw.js css js icons site/
+          cp -r index.html manifest.webmanifest sw.js css js icons paper site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
